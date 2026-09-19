@@ -8,6 +8,7 @@ pgvector>=0.3
 openai>=1.40
 python-multipart>=0.0.9
 python-docx>=1.1
+numpy>=1.26.0
 # optional: PDF text extraction for uploads
 # pypdf>=4.2
 # tests
