@@ -780,7 +780,8 @@ def t_create_leave_request(ctx: ToolContext, start_date: str, end_date: str | No
     if s < today():
         return ToolOutcome("create_leave_request", "error", "Date is in the past", "ERROR: leave date is in the past.")
     if e < s:
-        e = s
+        return ToolOutcome("create_leave_request", "error", "Invalid date range",
+                           "ERROR: leave end date cannot be earlier than start date.")
     lt = leave_type if leave_type in ("casual", "sick", "earned") else "casual"
     days = _workdays(s, e) or 1.0
     b = _balance(ctx.db, p.user_id, s.year)
@@ -791,10 +792,11 @@ def t_create_leave_request(ctx: ToolContext, start_date: str, end_date: str | No
     me = _user(ctx.db, p)
     mgr = ctx.db.get(User, me.manager_id) if me.manager_id else None
     date_label = fmt_date(s) if s == e else f"{fmt_date(s)} → {fmt_date(e)}"
-    args = {"start_date": s.isoformat(), "end_date": e.isoformat(), "leave_type": lt, "reason": reason[:300],
+    reason_clean = (reason.strip() if isinstance(reason, str) and reason.strip() else "Personal work")[:300]
+    args = {"start_date": s.isoformat(), "end_date": e.isoformat(), "leave_type": lt, "reason": reason_clean,
             "days": days}
     preview = {"fields": [["Action", "Submit leave request"], ["Date", date_label], ["Type", lt.title()],
-                          ["Working days", f"{days:g}"], ["Reason", reason[:300]],
+                          ["Working days", f"{days:g}"], ["Reason", reason_clean],
                           ["Approver", mgr.full_name if mgr else "HR"],
                           ["Balance after approval", f"{remaining - days:g} {lt} day(s)"]]}
     if s.weekday() >= 5:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -11,6 +12,26 @@ settings = get_settings()
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 MONTHS = {m: i + 1 for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct",
                                           "nov", "dec"])}
+WORD_NUMS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+
+
+@dataclass
+class LeaveRequestDetails:
+    is_leave: bool
+    start_date: date | None = None
+    end_date: date | None = None
+    duration_days: float | None = None
+    leave_type: str = "casual"
+    reason: str = "Personal work"
+    is_ambiguous: bool = False
+    clarification_prompt: str | None = None
+
+
+def parse_num(s: str) -> int | None:
+    s = s.lower().strip()
+    if s.isdigit():
+        return int(s)
+    return WORD_NUMS.get(s)
 
 
 def today() -> date:
@@ -19,7 +40,9 @@ def today() -> date:
 
 def parse_date(text: str, base: date | None = None) -> date | None:
     base = base or today()
-    t = text.lower()
+    t = text.lower().strip()
+    if not t:
+        return None
     m = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", t)
     if m:
         try:
@@ -43,10 +66,144 @@ def parse_date(text: str, base: date | None = None) -> date | None:
         except ValueError:
             return None
     for i, wd in enumerate(WEEKDAYS):
-        if re.search(rf"\b(next\s+)?{wd}\b", t):
+        m_wd = re.search(rf"\b(?:(this|next)\s+)?{wd}\b", t)
+        if m_wd:
             delta = (i - base.weekday()) % 7 or 7
             return base + timedelta(days=delta)
     return None
+
+
+def extract_leave_reason(text: str) -> str:
+    t = text.strip()
+    m = re.search(r"\bbecause\s+of\s+([^.?!,]+)", t, re.I)
+    if not m:
+        m = re.search(r"\bbecause\s+([^.?!,]+)", t, re.I)
+    if not m:
+        m = re.search(r"\b(?:due\s+to|on\s+account\s+of)\s+([^.?!,]+)", t, re.I)
+    if not m:
+        m = re.search(r"\bas\s+i\s+(?:have|need|am)\s+([^.?!,]+)", t, re.I)
+    if not m:
+        m = re.search(r"\breason[:\s]+([^.?!,]+)", t, re.I)
+    if not m:
+        m = re.search(r"\bfor\s+(?!(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a few|some)\s+days?\b|(?:tomorrow|today|next|this|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b)([^.?!,]+)", t, re.I)
+    if m:
+        raw = m.group(1).strip()
+        cleaned = re.sub(r"^(?:i\s+have\s+(?:to\s+attend\s+)?(?:a\s+|an\s+)?|i\s+need\s+to\s+(?:attend\s+)?|i\s+am\s+(?:having\s+)?(?:a\s+|an\s+)?|to\s+attend\s+(?:a\s+|an\s+)?|having\s+(?:a\s+|an\s+)?|a\s+|an\s+|my\s+)", "", raw, flags=re.I).strip()
+        if cleaned:
+            return cleaned[:1].upper() + cleaned[1:]
+    return "Personal work"
+
+
+def parse_leave_request(text: str, base: date | None = None) -> LeaveRequestDetails:
+    base = base or today()
+    t = text.strip()
+    low = t.lower()
+
+    is_leave = bool(re.search(
+        r"\b(submit|apply|create|file|request|book|take|taking|need|want|give me|asking for|can i take|plan to take)\b.{0,40}\b(leave|days? off|pto|vacation|time off)\b"
+        r"|\b(leave|pto|day off)\s+(tomorrow|today|next|this|on|from|for)\b"
+        r"|\bleave request\b|\bneed\s+(some\s+)?leave\b",
+        low
+    ))
+    if not is_leave:
+        return LeaveRequestDetails(is_leave=False)
+
+    lt = "sick" if re.search(r"\b(sick|unwell|fever|doctor|medical|hospital)\b", low) else \
+         "earned" if re.search(r"\b(earned|privilege|annual|vacation|holiday)\b", low) else "casual"
+
+    reason = extract_leave_reason(t)
+
+    # Ambiguity 1: Vague request with no date at all
+    if re.search(r"\b(some leave|leave for a few days|a few days off|take some time off)\b", low) and not re.search(r"\b(tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4}-\d{2}-\d{2})\b", low):
+        return LeaveRequestDetails(
+            is_leave=True, leave_type=lt, reason=reason, is_ambiguous=True,
+            clarification_prompt="Sure! What date should the leave start, and how many days do you need?"
+        )
+
+    # Ambiguity 2: Vague 'next week' without specific dates
+    if re.search(r"\b(next week|sometime next week)\b", low) and not re.search(r"\b(\d+|one|two|three|four|five)\s+days?\b", low) and not re.search(r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b", low):
+        return LeaveRequestDetails(
+            is_leave=True, leave_type=lt, reason=reason, is_ambiguous=True,
+            clarification_prompt="I can help you prepare a leave request. Which specific dates next week would you like to take off, and for how many days?"
+        )
+
+    # Ambiguity 3: 'from <Date>' but missing duration and return date
+    m_from_only = re.search(r"\b(?:from|starting|beginning)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today|\d{1,2}(?:st|nd|rd|th)?\s+[a-z]+|[a-z]+\s+\d{1,2})\b", low)
+    if m_from_only and not re.search(r"\b(to|until|till|through)\b", low) and not re.search(r"\b(?:for\s+)?(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+days?\b", low):
+        day_name = m_from_only.group(1).title()
+        return LeaveRequestDetails(
+            is_leave=True, leave_type=lt, reason=reason, is_ambiguous=True,
+            clarification_prompt=f"Sure! How many days of leave do you need starting {day_name}, or what is your return date?"
+        )
+
+    # Range Pattern: 'from <Date1> to/until/through/till <Date2>'
+    m_range = re.search(r"\bfrom\s+([^,]+?)\s+(?:to|until|till|through)\s+([^,.?!]+)", low)
+    if not m_range:
+        m_range = re.search(r"\b([^,]+?)\s+(?:to|until|till|through)\s+([^,.?!]+)", low)
+        if m_range:
+            d1_try = parse_date(m_range.group(1), base)
+            d2_try = parse_date(m_range.group(2), base)
+            if not (d1_try and d2_try):
+                m_range = None
+
+    if m_range:
+        d1 = parse_date(m_range.group(1), base)
+        d2 = parse_date(m_range.group(2), base)
+        if d1 and d2:
+            if d2 < d1:
+                return LeaveRequestDetails(
+                    is_leave=True, leave_type=lt, reason=reason, is_ambiguous=True,
+                    clarification_prompt="The requested end date cannot be earlier than the start date. Please verify the dates."
+                )
+            dur = float((d2 - d1).days + 1)
+            # Edge case: conflicting duration mentioned
+            m_dur_check = re.search(r"\b(?:for\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+days?\b", low)
+            if m_dur_check:
+                n_stated = parse_num(m_dur_check.group(1))
+                if n_stated and n_stated != int(dur):
+                    return LeaveRequestDetails(
+                        is_leave=True, leave_type=lt, reason=reason, is_ambiguous=True,
+                        clarification_prompt=f"You mentioned {n_stated} days, but the dates from {fmt_date(d1)} to {fmt_date(d2)} span {int(dur)} calendar days. Could you please clarify the exact dates or duration?"
+                    )
+            return LeaveRequestDetails(
+                is_leave=True, start_date=d1, end_date=d2, duration_days=dur,
+                leave_type=lt, reason=reason, is_ambiguous=False
+            )
+
+    # Duration Pattern: '<N> days from/starting <Date>' or 'for <N> days'
+    m_dur = re.search(r"\b(?:for\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+days?(?:\s+off)?(?:\s+(?:from|starting|beginning|on))?\s*([^,;.?!]*)", low)
+    if m_dur:
+        n = parse_num(m_dur.group(1))
+        date_str = m_dur.group(2).strip()
+        d_start = parse_date(date_str, base) or parse_date(low, base)
+        if d_start and n:
+            d_end = d_start + timedelta(days=n - 1)
+            return LeaveRequestDetails(
+                is_leave=True, start_date=d_start, end_date=d_end, duration_days=float(n),
+                leave_type=lt, reason=reason, is_ambiguous=False
+            )
+
+    # 'tomorrow and the day after'
+    if "tomorrow and the day after" in low:
+        d1 = base + timedelta(days=1)
+        d2 = base + timedelta(days=2)
+        return LeaveRequestDetails(
+            is_leave=True, start_date=d1, end_date=d2, duration_days=2.0,
+            leave_type=lt, reason=reason, is_ambiguous=False
+        )
+
+    # Single date pattern: 'tomorrow', 'today', 'on Friday', etc.
+    d_single = parse_date(low, base)
+    if d_single:
+        return LeaveRequestDetails(
+            is_leave=True, start_date=d_single, end_date=d_single, duration_days=1.0,
+            leave_type=lt, reason=reason, is_ambiguous=False
+        )
+
+    return LeaveRequestDetails(
+        is_leave=True, leave_type=lt, reason=reason, is_ambiguous=True,
+        clarification_prompt="Sure! What date should the leave start, and how many days do you need?"
+    )
 
 
 def fmt_date(d: date) -> str:
@@ -63,11 +220,17 @@ SENSITIVE_TERMS = re.compile(r"\b(executive (compensation|salar|pay)|ceo (salary
 
 def detect_flags(text: str) -> dict:
     t = text.lower()
+    has_leave_balance = bool(re.search(r"\b(leave|leaves|pto|vacation)\b.*\b(balance|remaining|left|how many)\b|"
+                                       r"\b(balance|remaining|how many)\b.*\b(leave|leaves)\b", t))
+    has_leave_submit = bool(re.search(
+        r"\b(submit|apply|create|file|request|book|take|taking|need|want|give me|asking for|can i take|plan to take)\b.{0,40}\b(leave|days? off|pto|vacation|time off)\b"
+        r"|\b(leave|pto|day off)\s+(tomorrow|today|next|this|on|from|for)\b"
+        r"|\bleave request\b|\bneed\s+(some\s+)?leave\b",
+        t
+    ))
     return {
-        "leave_balance": bool(re.search(r"\b(leave|leaves|pto|vacation)\b.*\b(balance|remaining|left|how many)\b|"
-                                        r"\b(balance|remaining|how many)\b.*\b(leave|leaves)\b", t)),
-        "leave_submit": bool(re.search(r"\b(submit|apply|create|file|request|book|take)\b.*\b(leave|day off|pto|vacation)\b|"
-                                       r"\bleave request\b", t)),
+        "leave_balance": has_leave_balance,
+        "leave_submit": has_leave_submit and not (has_leave_balance and not re.search(r"\b(apply|submit|book|take|request)\b", t)),
         "email": bool(re.search(r"\b(email|e-mail|mail|message|write to|send)\b", t) and
                       re.search(r"\b(email|e-mail|mail)\b|\bdraft\b", t)),
         "ticket": bool(re.search(r"\b(ticket|helpdesk|help desk|it support|incident)\b", t) or

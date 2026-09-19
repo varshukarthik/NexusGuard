@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..core.rbac import check_tool, is_guest
 from . import composer
-from .nlp import fmt_date, parse_date, today
+from .nlp import fmt_date, parse_date, parse_leave_request, today
 from .router import Understanding, parse_analytics
 from .tools import PRIORITY_WORD, ToolContext, ToolOutcome, resolve_employee, run_tool
 
@@ -395,29 +395,36 @@ def workflow_agent(run: Runner, u: Understanding) -> AgentReply:
             out = run("delete_document", document_id=m.group(0).upper())
             parts.append("I've prepared the deletion. **It will only happen after you approve** the action card below."
                          if out.status == "pending_confirmation" else f"❌ {out.summary}.")
-    if f.get("leave_submit") and run.can("create_leave_request"):
-        d = parse_date(text)
-        if not d:
-            parts.append("Which date would you like to take off? For example: *“apply casual leave for next Monday”*.")
+    if f.get("leave_submit"):
+        if is_guest(ctx.principal) or not run.can("create_leave_request"):
+            run("create_leave_request", start_date=today().isoformat())
+            return AgentReply("Workflow Agent", "🔒 **This action isn't available in Guest Mode.** Creating tickets, leave "
+                                                "requests or other workflows requires an employee sign-in. The attempt was "
+                                                "logged.")
         else:
-            lt = "sick" if re.search(r"\b(sick|unwell|fever|doctor|medical)\b", text, re.I) else \
-                "earned" if re.search(r"\b(earned|privilege|vacation|annual)\b", text, re.I) else "casual"
-            end = d
-            m = re.search(r"\bfor (\d+) days\b", text, re.I)
-            if m:
-                n = int(m.group(1))
-                while n > 1:
-                    end += timedelta(days=1)
-                    if end.weekday() < 5:
-                        n -= 1
-            out = run("create_leave_request", start_date=d.isoformat(), end_date=end.isoformat(), leave_type=lt,
-                      reason=_reason_from(text, "Personal work"))
-            if out.status == "pending_confirmation":
-                parts.append(f"I've prepared a **{lt} leave request for {fmt_date(d)}**"
-                             + (f" to {fmt_date(end)}" if end != d else "") + ". Review the details below and click "
-                             "**Confirm & submit** to submit it to your manager — nothing is submitted until you do.")
+            lr = parse_leave_request(text, base=today())
+            if lr.is_ambiguous or not lr.start_date:
+                parts.append(lr.clarification_prompt or "Sure! What date should the leave start, and how many days do you need?")
             else:
-                parts.append(f"❌ I couldn't prepare the request: {out.summary}.")
+                d = lr.start_date
+                end = lr.end_date or d
+                lt = lr.leave_type
+                reason = lr.reason
+                out = run("create_leave_request", start_date=d.isoformat(), end_date=end.isoformat(), leave_type=lt,
+                          reason=reason)
+                if out.status == "pending_confirmation":
+                    dur_str = f"{lr.duration_days:g} day(s)" if lr.duration_days else "1 day"
+                    parts.append(
+                        f"I've prepared your **{lt.title()} Leave Request**:\n\n"
+                        f"• **Start:** {fmt_date(d)}\n"
+                        f"• **End:** {fmt_date(end)}\n"
+                        f"• **Duration:** {dur_str}\n"
+                        f"• **Leave Type:** {lt.title()} Leave\n"
+                        f"• **Reason:** {reason}\n\n"
+                        "Please review the details in the action card below and click **Confirm & submit** to route this to your manager for approval. Nothing is submitted until you confirm."
+                    )
+                else:
+                    parts.append(f"❌ I couldn't prepare the request: {out.summary}.")
     if f.get("email") and run.can("draft_email"):
         recipient, subject, body = _email_parts(ctx, text)
         out = run("draft_email", recipient=recipient, subject=subject, body=body)
@@ -430,7 +437,7 @@ def workflow_agent(run: Runner, u: Understanding) -> AgentReply:
         else:
             parts.append(f"I couldn't draft that email: {out.summary}.")
     is_ticket = (h.get("ticket") and h.get("create")) or h.get("device_problem") or f.get("ticket")
-    wants = is_ticket or f.get("leave_submit") or f.get("email") or h.get("access_req") or h.get("software_req") \
+    wants = is_ticket or f.get("email") or h.get("access_req") or h.get("software_req") \
         or h.get("document_req") or h.get("procurement_req")
     if wants and not (run.can("create_it_ticket") or run.can("create_request")):
         run("create_it_ticket" if is_ticket else "create_request", title="(not permitted)", description="-")

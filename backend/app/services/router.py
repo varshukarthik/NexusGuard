@@ -179,8 +179,9 @@ def understand(db, principal, text: str) -> Understanding:
     # --- Workflow (state-changing) requests ---------------------------------------------------
     question = bool(re.search(r"^\s*(how|what|when|where|why|who|which|can i|do i|should i|is|are|explain|tell me)\b",
                               low))
+    can_i_leave = bool(re.search(r"^\s*can i\b", low) and f["leave_submit"])
     wants_action = h["create"] and not question
-    wf = (f["delete"] or f["email"] or (f["leave_submit"] and not question) or (h["ticket"] and h["create"]) or
+    wf = (f["delete"] or f["email"] or (f["leave_submit"] and (not question or can_i_leave)) or (h["ticket"] and h["create"]) or
           (h["device_problem"] and not re.search(r"^\s*(how|what|why)\b", low)) or
           (wants_action and (h["access_req"] or h["software_req"] or h["document_req"] or h["procurement_req"])))
     if f["leave_balance"] or (f["leave_submit"] and re.search(r"\b(balance|check|remaining|left)\b", low)):
