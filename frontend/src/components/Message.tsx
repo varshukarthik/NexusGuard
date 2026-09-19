@@ -1,5 +1,5 @@
 import { AlertTriangle, Bot, Briefcase, Building2, Check, CheckCircle2, ChevronDown, Circle, CircleSlash, Clock, Copy,
-  Database, Eye, FileText, FolderKanban, Loader2, Lock, RefreshCw, ShieldAlert, ThumbsDown, ThumbsUp, User, X,
+  Database, Eye, FileText, FolderKanban, Loader2, RefreshCw, ShieldAlert, ThumbsDown, ThumbsUp, User, X,
   XCircle } from "lucide-react";
 import { useState } from "react";
 import { api } from "../lib/api";
@@ -217,21 +217,13 @@ export function AssistantMessage({ msg, latest, onUpdate, onRegenerate }:
           </div>
         ))}
 
-        {denied && (
-          <div className="overflow-hidden rounded-xl border border-rose-200 dark:border-rose-500/30">
-            <div className="flex items-start gap-3 bg-rose-50 px-4 py-3 dark:bg-rose-500/10">
-              <div className="rounded-lg bg-white p-2 text-rose-600 ring-1 ring-rose-200 dark:bg-rose-500/20 dark:ring-rose-500/30"><Lock className="h-4 w-4" /></div>
-              <div className="flex-1">
-                <p className="flex items-center gap-2 font-semibold text-rose-900 dark:text-rose-200">Access denied <ClassBadge level={denied.classification} size="xs" /></p>
-                <p className="text-sm text-rose-800/90 dark:text-rose-200/80">{denied.message}</p>
-                <p className="mt-1 text-xs text-rose-700/70 dark:text-rose-300/70">Enforced by the server before any data reached the AI. The attempt was recorded in the audit log.</p>
-              </div>
-            </div>
-            {denied.document_ids?.[0] && !me.is_guest && <div className="border-t border-rose-100 bg-white px-4 py-2.5 dark:border-rose-500/20 dark:bg-slate-950/40"><RequestAccess docId={denied.document_ids[0]} /></div>}
+        {denied && denied.document_ids?.[0] && !me.is_guest && (
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 dark:border-slate-800/80 dark:bg-slate-900/40">
+            <RequestAccess docId={denied.document_ids[0]} />
           </div>
         )}
 
-        {msg.content && !(denied && msg.content.startsWith("🔒 **Access denied")) && <Markdown text={msg.content} onCite={openDoc} />}
+        {msg.content && <Markdown text={msg.content} onCite={openDoc} />}
 
         {(m.actions ?? []).map((a) => <ActionCard key={a.id} action={a} onChange={updateAction} />)}
 

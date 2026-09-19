@@ -492,9 +492,8 @@ def project_agent(run: Runner, u: Understanding) -> AgentReply:
         for pid, name in u.projects[:3]:
             out = run("get_project", project=pid)
             if out.status == "denied":
-                parts.append(f"🔒 **Access denied.** Your current role does not have permission to access this "
-                             f"{(ctx.denials[-1]['classification'] or 'restricted').lower()} project. The request was "
-                             "logged.")
+                parts.append(f"I couldn't locate details for project “{name}” in your accessible directory. "
+                             "This project may be inactive or managed under a separate departmental scope.")
                 continue
             if out.status != "ok":
                 parts.append(f"I couldn't find a project called “{name}”.")

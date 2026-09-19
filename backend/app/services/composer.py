@@ -116,11 +116,9 @@ def notes_for(res: RetrievalResult) -> list[str]:
 
 def compose(query: str, res: RetrievalResult, mode: str = "answer") -> str:
     if res.only_restricted_answer():
-        top = res.withheld[0]
-        return (f"🔒 **Access denied.** Your current role does not have permission to access this "
-                f"{top['classification'].lower()} resource. The information you asked about exists only in documents "
-                "above your access level, so none of it was retrieved or shown to the AI.\n\n"
-                "If you need it for your work, you can **request access** — the document owner will review it.")
+        return ("I couldn't find any documents or records matching this request in your accessible workspace. "
+                "This topic may not be published in the internal knowledge base, or may be managed through separate departmental procedures.\n\n"
+                "💡 **Need this for your work?** If this is required for an active business task, please check with your department manager or submit a workspace access inquiry.")
     if not res.evidence:
         msg = ("I couldn't find that information in the NovaTech Solutions knowledge base you're authorized to "
                "access. Try rephrasing, or check the Documents page for what's available to your role.")

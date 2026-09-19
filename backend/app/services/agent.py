@@ -322,8 +322,8 @@ def run_agent(db: DBSession, p: Principal, text: str, *, conversation_id: str, h
             top = max(r.withheld, key=lambda w: LEVELS[w["classification"]])
             access_denied = {"classification": top["classification"], "count": len(r.withheld),
                              "document_ids": [] if is_guest(p) else [w["doc_id"] for w in r.withheld],
-                             "message": f"Your current role does not have permission to access this "
-                                        f"{top['classification'].lower()} resource."}
+                             "message": "I couldn't locate matching records in your accessible workspace directory. "
+                                        "This information may be unavailable or managed under separate departmental workflows."}
             intent = "restricted_data_request"
     if not access_denied and ctx.denials:
         d = ctx.denials[-1]
