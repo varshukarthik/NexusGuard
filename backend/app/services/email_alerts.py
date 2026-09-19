@@ -8,6 +8,7 @@ import time
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formatdate, make_msgid
 
 from ..config import get_settings
 
@@ -18,11 +19,11 @@ _recent_alerts: dict[str, float] = {}
 _cache_lock = threading.Lock()
 
 
-def _is_duplicate(key: str, window_seconds: float = 10.0) -> bool:
+def _is_duplicate(key: str, window_seconds: float = 3.0) -> bool:
     now = time.time()
     with _cache_lock:
         # Cleanup expired items
-        expired = [k for k, t in _recent_alerts.items() if now - t > 300]
+        expired = [k for k, t in _recent_alerts.items() if now - t > 180]
         for k in expired:
             _recent_alerts.pop(k, None)
         prev = _recent_alerts.get(key)
@@ -309,26 +310,59 @@ Log recorded in enterprise audit ledger.
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = settings.smtp_user
+    msg["From"] = f"NovaTech Security Gateway <{settings.smtp_user}>"
     msg["To"] = recipient
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain="evocation.in")
+    msg["X-Priority"] = "1"
+    msg["Importance"] = "High"
+    msg["X-Mailer"] = "NovaTech-Security-Gateway/1.0"
+
     msg.attach(MIMEText(plain_body, "plain", "utf-8"))
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    try:
-        if settings.smtp_port == 465:
-            with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=12) as server:
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.send_message(msg)
-        else:
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=12) as server:
-                server.starttls()
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.send_message(msg)
-        log.info("Security alert email dispatched successfully to %s", recipient)
-        return True
-    except Exception as exc:
-        log.exception("Failed to transmit security alert email to %s: %s", recipient, exc)
-        return False
+    delivered, route = dispatch_smtp_message(msg, recipient)
+    return delivered
+
+
+def dispatch_smtp_message(msg: MIMEMultipart, recipient: str) -> tuple[bool, str]:
+    """Transmits an email message trying cascading fallback routes:
+
+    1. Domain on Port 465 (SSL)
+    2. Domain on Port 587 (STARTTLS)
+    3. Direct Host IP on Port 587 (STARTTLS - avoids DNS latency)
+    4. Direct Host IP on Port 465 (SSL)
+    """
+    settings = get_settings()
+    candidates = [
+        (settings.smtp_host, 465, True, f"{settings.smtp_host}:465 (SSL)"),
+        (settings.smtp_host, 587, False, f"{settings.smtp_host}:587 (STARTTLS)"),
+        ("37.114.37.231", 587, False, "37.114.37.231:587 (Direct IP STARTTLS)"),
+        ("37.114.37.231", 465, True, "37.114.37.231:465 (Direct IP SSL)"),
+    ]
+
+    errors: list[str] = []
+    for host, port, use_ssl, label in candidates:
+        try:
+            log.debug("Attempting SMTP delivery to %s via %s", recipient, label)
+            if use_ssl:
+                with smtplib.SMTP_SSL(host, port, timeout=8) as server:
+                    server.login(settings.smtp_user, settings.smtp_password)
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(host, port, timeout=8) as server:
+                    server.starttls()
+                    server.login(settings.smtp_user, settings.smtp_password)
+                    server.send_message(msg)
+            log.info("Email successfully dispatched to %s via %s", recipient, label)
+            return True, label
+        except Exception as exc:
+            err_msg = f"{label} failed: {type(exc).__name__} ({exc})"
+            log.warning("SMTP route %s failed: %s", label, exc)
+            errors.append(err_msg)
+
+    log.error("All SMTP routes failed for recipient %s. Errors: %s", recipient, "; ".join(errors))
+    return False, "All routes failed: " + "; ".join(errors)
 
 
 def send_unauthorized_access_alert_async(**kwargs) -> None:

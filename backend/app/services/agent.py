@@ -378,24 +378,46 @@ def run_agent(db: DBSession, p: Principal, text: str, *, conversation_id: str, h
                  commit=False, request_id=request_id)
 
     # Automated security incident alert to Admin (novasolutions@evocation.in -> varshukarthik7@gmail.com)
-    if access_denied or blocked or withheld_public:
+    all_withheld = [w for r in ctx.retrievals for w in r.withheld]
+    is_unauthorized = bool(
+        access_denied
+        or blocked
+        or all_withheld
+        or ctx.denials
+        or outcome in ("DENIED", "BLOCKED")
+        or intent == "restricted_data_request"
+        or getattr(u, "qtype", "") == "restricted"
+    )
+    if is_unauthorized:
         res_label = "Restricted Corporate Data"
         cls_label = "RESTRICTED"
-        reason_label = ""
+        reason_label = "Unauthorized access attempt"
         if access_denied:
             cls_label = access_denied.get("classification") or "RESTRICTED"
             reason_label = access_denied.get("message") or "Access denied by zero-trust policy"
             doc_ids = access_denied.get("document_ids") or []
+            if not doc_ids and all_withheld:
+                doc_ids = [w["doc_id"] for w in all_withheld if "doc_id" in w]
             res_label = f"Document(s): {', '.join(doc_ids)}" if doc_ids else "Restricted Knowledge Base"
+        elif all_withheld:
+            top = max(all_withheld, key=lambda w: LEVELS.get(w.get("classification", "INTERNAL"), 0))
+            cls_label = top.get("classification", "RESTRICTED")
+            doc_ids = [w["doc_id"] for w in all_withheld if "doc_id" in w]
+            res_label = f"Withheld Document(s): {', '.join(doc_ids)}" if doc_ids else "Restricted Documents"
+            reason_label = f"{len(all_withheld)} document(s) withheld due to clearance/role mismatch ({p.clearance.upper()})"
+        elif ctx.denials:
+            d = ctx.denials[-1]
+            cls_label = d.get("classification") or "RESTRICTED"
+            reason_label = d.get("reason") or "Tool execution denied by permission engine"
+            res_label = d.get("resource") or d.get("tool") or "Protected Resource"
         elif blocked:
             cls_label = "POLICY_VIOLATION"
             reason_label = (security[-1]["message"] if security else "Blocked by security guardrail")
             res_label = "AI Chat Assistant / Guardrail"
-        elif withheld_public:
-            cls_label = withheld_public[0].get("classification", "RESTRICTED")
-            doc_ids = [w["doc_id"] for w in withheld_public]
-            res_label = f"Withheld Document(s): {', '.join(doc_ids)}"
-            reason_label = f"{len(withheld_public)} document(s) withheld due to clearance mismatch ({p.clearance.upper()})"
+        elif intent == "restricted_data_request" or getattr(u, "qtype", "") == "restricted":
+            cls_label = "CONFIDENTIAL"
+            reason_label = "Query classified as restricted corporate intelligence request"
+            res_label = "Enterprise Knowledge Base"
 
         send_unauthorized_access_alert_async(
             user_name=p.full_name,

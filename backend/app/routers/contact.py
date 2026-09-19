@@ -9,7 +9,11 @@ from email.mime.text import MIMEText
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from datetime import datetime, timezone
+from email.utils import formatdate, make_msgid
+
 from ..config import get_settings
+from ..services.email_alerts import dispatch_smtp_message
 
 log = logging.getLogger("novatech.contact")
 router = APIRouter(tags=["contact"])
@@ -25,6 +29,37 @@ class ContactRequest(BaseModel):
 @router.get("/contact/")
 def contact_status():
     return {"status": "ok", "service": "contact", "recipient": "novasolutions@evocation.in"}
+
+
+@router.get("/test-email")
+def test_email_delivery():
+    """Diagnostic endpoint to verify SMTP delivery directly to admin email."""
+    settings = get_settings()
+    recipient = settings.admin_alert_email
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "🧪 [DIAGNOSTIC TEST] NovaTech Security Gateway Alert Delivery Check"
+    msg["From"] = f"NovaTech Security Gateway <{settings.smtp_user}>"
+    msg["To"] = recipient
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain="evocation.in")
+    msg["X-Priority"] = "1"
+    msg["Importance"] = "High"
+
+    plain = f"This is an automated diagnostic test from NovaTech Solutions Security Gateway.\nTimestamp: {now_utc}\nRecipient: {recipient}\nStatus: Delivery verified."
+    html = f"<h3>NovaTech Security Gateway</h3><p>Automated diagnostic test successfully transmitted.</p><p><strong>Timestamp:</strong> {now_utc}</p><p><strong>Recipient:</strong> {recipient}</p>"
+    msg.attach(MIMEText(plain, "plain", "utf-8"))
+    msg.attach(MIMEText(html, "html", "utf-8"))
+
+    ok, route = dispatch_smtp_message(msg, recipient)
+    return {
+        "status": "ok" if ok else "error",
+        "delivered": ok,
+        "delivered_via": route,
+        "recipient": recipient,
+        "sender": settings.smtp_user,
+        "timestamp": now_utc,
+    }
 
 
 @router.post("/contact")
@@ -92,26 +127,19 @@ def submit_contact(req: ContactRequest):
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = settings.smtp_user
+    msg["From"] = f"NovaTech Inbound Inquiries <{settings.smtp_user}>"
     msg["To"] = settings.contact_recipient
     msg["Reply-To"] = req.email
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain="evocation.in")
 
     msg.attach(MIMEText(text_body, "plain", "utf-8"))
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    try:
-        if settings.smtp_port == 465:
-            with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=12) as server:
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.send_message(msg)
-        else:
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=12) as server:
-                server.starttls()
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.send_message(msg)
-        log.info("Contact email successfully delivered to %s", settings.contact_recipient)
+    delivered, route = dispatch_smtp_message(msg, settings.contact_recipient)
+    if delivered:
+        log.info("Contact email successfully delivered to %s via %s", settings.contact_recipient, route)
         return {"status": "ok", "message": "Inquiry sent successfully to our team."}
-    except Exception as exc:
-        log.exception("SMTP transmission failed: %s", exc)
-        # Return success so user experience is smooth, but log warning
+    else:
+        log.warning("Contact email delivery attempt failed across all routes.")
         return {"status": "ok", "message": "Inquiry received. Our team will contact you shortly."}
