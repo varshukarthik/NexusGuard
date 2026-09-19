@@ -9,6 +9,7 @@ import {
   Database,
   FileCheck,
   GitBranch,
+  Loader2,
   Lock,
   Mail,
   MapPin,
@@ -22,6 +23,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 
 interface LandingPageProps {
   onSignIn: () => void;
@@ -39,6 +41,11 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
   });
 
   const [activeModal, setActiveModal] = useState<string | null>(null);
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactOrg, setContactOrg] = useState("");
+  const [contactMsg, setContactMsg] = useState("");
+  const [contactSubmitting, setContactSubmitting] = useState(false);
+  const [contactError, setContactError] = useState("");
   const [contactSubmitted, setContactSubmitted] = useState(false);
 
   const toggleTheme = () => {
@@ -59,6 +66,28 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contactEmail.trim()) return;
+    setContactSubmitting(true);
+    setContactError("");
+    try {
+      await api.post("/contact", {
+        email: contactEmail.trim(),
+        organization: contactOrg.trim(),
+        message: contactMsg.trim(),
+      });
+      setContactSubmitted(true);
+      setContactEmail("");
+      setContactOrg("");
+      setContactMsg("");
+    } catch (err: any) {
+      setContactError(err?.message || "Could not send inquiry. Please try again or reach out directly at novasolutions@evocation.in.");
+    } finally {
+      setContactSubmitting(false);
+    }
   };
 
   return (
@@ -541,7 +570,9 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
               </div>
               <div className="flex items-center gap-3">
                 <Mail className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>enterprise@novatech.demo</span>
+                <a href="mailto:novasolutions@evocation.in" className="hover:underline hover:text-emerald-600 dark:hover:text-emerald-400 font-medium">
+                  novasolutions@evocation.in
+                </a>
               </div>
               <div className="flex items-center gap-3">
                 <Phone className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
@@ -557,30 +588,34 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
                 <div className="h-12 w-12 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-3">
                   <Check className="h-6 w-6" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Inquiry Received</h3>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Inquiry Sent Successfully</h3>
                 <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
-                  Thank you for reaching out. A Nova Solutions enterprise specialist will contact you within 24 business hours.
+                  Your message has been delivered directly to <span className="font-semibold text-emerald-600 dark:text-emerald-400">novasolutions@evocation.in</span>. Our team will contact you shortly.
                 </p>
                 <button
-                  onClick={() => setContactSubmitted(false)}
+                  onClick={() => {
+                    setContactSubmitted(false);
+                    setContactError("");
+                  }}
                   className="mt-5 px-4 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 transition"
                 >
                   Send another inquiry
                 </button>
               </div>
             ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setContactSubmitted(true);
-                }}
-                className="space-y-4"
-              >
+              <form onSubmit={handleContactSubmit} className="space-y-4">
+                {contactError && (
+                  <div className="p-3 rounded-lg text-xs bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                    {contactError}
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Corporate Work Email</label>
                   <input
                     required
                     type="email"
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
                     placeholder="name@company.com"
                     className="w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-white dark:placeholder:text-slate-500"
                   />
@@ -588,8 +623,9 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Organization / Department</label>
                   <input
-                    required
                     type="text"
+                    value={contactOrg}
+                    onChange={(e) => setContactOrg(e.target.value)}
                     placeholder="e.g. Apex Global Engineering"
                     className="w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-white dark:placeholder:text-slate-500"
                   />
@@ -598,15 +634,25 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Message / Requirements</label>
                   <textarea
                     rows={3}
+                    value={contactMsg}
+                    onChange={(e) => setContactMsg(e.target.value)}
                     placeholder="Describe your enterprise knowledge base & security requirements..."
                     className="w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800/80 dark:text-white dark:placeholder:text-slate-500"
                   />
                 </div>
                 <button
                   type="submit"
-                  className="w-full py-3 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition"
+                  disabled={contactSubmitting}
+                  className="w-full py-3 rounded-lg text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/20 transition flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed"
                 >
-                  Submit Demonstration Request
+                  {contactSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Delivering to novasolutions@evocation.in...</span>
+                    </>
+                  ) : (
+                    <span>Submit Demonstration Request</span>
+                  )}
                 </button>
               </form>
             )}

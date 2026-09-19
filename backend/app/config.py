@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     company_timezone: str = "Asia/Kolkata"
     max_upload_bytes: int = 2_000_000
 
+    # SMTP Mail Server settings
+    smtp_host: str = "evocation.in"
+    smtp_port: int = 465
+    smtp_user: str = "novasolutions@evocation.in"
+    smtp_password: str = "nova@123"
+    contact_recipient: str = "novasolutions@evocation.in"
+
     @property
     def openai_enabled(self) -> bool:
         return bool(self.openai_api_key and self.openai_api_key.strip())
