@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     contact_recipient: str = "novasolutions@evocation.in"
     admin_alert_email: str = "varshukarthik7@gmail.com"
 
+    # Optional HTTPS Email API (bypasses Render/cloud free-tier outbound SMTP port restrictions)
+    resend_api_key: str | None = None
+    sendgrid_api_key: str | None = None
+
     @property
     def openai_enabled(self) -> bool:
         return bool(self.openai_api_key and self.openai_api_key.strip())

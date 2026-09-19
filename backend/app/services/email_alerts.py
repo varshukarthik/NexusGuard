@@ -328,12 +328,89 @@ Log recorded in enterprise audit ledger.
 def dispatch_smtp_message(msg: MIMEMultipart, recipient: str) -> tuple[bool, str]:
     """Transmits an email message trying cascading fallback routes:
 
-    1. Domain on Port 465 (SSL)
-    2. Domain on Port 587 (STARTTLS)
-    3. Direct Host IP on Port 587 (STARTTLS - avoids DNS latency)
-    4. Direct Host IP on Port 465 (SSL)
+    1. Optional HTTPS Email API (Resend / SendGrid - unblockable by cloud free-tier firewalls)
+    2. Domain on Port 465 (SSL)
+    3. Domain on Port 587 (STARTTLS)
+    4. Direct Host IP on Port 587 (STARTTLS - avoids DNS latency)
+    5. Direct Host IP on Port 465 (SSL)
     """
     settings = get_settings()
+
+    # Route 1: HTTPS API (Resend) if configured
+    if settings.resend_api_key:
+        try:
+            import json
+            import urllib.request
+            sender = f"NovaTech Security Gateway <{settings.smtp_user}>"
+            html_content = ""
+            text_content = ""
+            for part in msg.walk():
+                if part.get_content_type() == "text/html":
+                    html_content = part.get_payload(decode=True).decode("utf-8", errors="replace")
+                elif part.get_content_type() == "text/plain":
+                    text_content = part.get_payload(decode=True).decode("utf-8", errors="replace")
+
+            req_payload = {
+                "from": sender,
+                "to": [recipient],
+                "subject": msg["Subject"],
+                "text": text_content,
+                "html": html_content or text_content,
+            }
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=json.dumps(req_payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {settings.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                if resp.status in (200, 201):
+                    log.info("Email dispatched successfully via Resend HTTPS API to %s", recipient)
+                    return True, "Resend HTTPS API (Port 443)"
+        except Exception as exc:
+            log.warning("Resend HTTPS API route failed: %s", exc)
+
+    # Route 2: HTTPS API (SendGrid) if configured
+    if settings.sendgrid_api_key:
+        try:
+            import json
+            import urllib.request
+            html_content = ""
+            text_content = ""
+            for part in msg.walk():
+                if part.get_content_type() == "text/html":
+                    html_content = part.get_payload(decode=True).decode("utf-8", errors="replace")
+                elif part.get_content_type() == "text/plain":
+                    text_content = part.get_payload(decode=True).decode("utf-8", errors="replace")
+
+            req_payload = {
+                "personalizations": [{"to": [{"email": recipient}]}],
+                "from": {"email": settings.smtp_user, "name": "NovaTech Security Gateway"},
+                "subject": msg["Subject"],
+                "content": [
+                    {"type": "text/plain", "value": text_content or "NovaTech Security Alert"},
+                    {"type": "text/html", "value": html_content or text_content},
+                ],
+            }
+            req = urllib.request.Request(
+                "https://api.sendgrid.com/v3/mail/send",
+                data=json.dumps(req_payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {settings.sendgrid_api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                if resp.status in (200, 202):
+                    log.info("Email dispatched successfully via SendGrid HTTPS API to %s", recipient)
+                    return True, "SendGrid HTTPS API (Port 443)"
+        except Exception as exc:
+            log.warning("SendGrid HTTPS API route failed: %s", exc)
+
     candidates = [
         (settings.smtp_host, 465, True, f"{settings.smtp_host}:465 (SSL)"),
         (settings.smtp_host, 587, False, f"{settings.smtp_host}:587 (STARTTLS)"),
