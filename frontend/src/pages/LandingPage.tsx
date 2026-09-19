@@ -5,7 +5,11 @@ import {
   Building2,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
+  Code,
+  Copy,
   Database,
   FileCheck,
   GitBranch,
@@ -24,6 +28,98 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+
+const TEST_SCENARIOS = {
+  A: {
+    id: "Test Input A",
+    title: "Authorized answer",
+    user: {
+      user_id: "U102",
+      role: "Finance",
+      department: "Finance",
+      clearance: "Internal"
+    },
+    documents: [
+      {
+        document_id: "DOC-101",
+        title: "Q4 Revenue Forecast",
+        classification: "Internal",
+        allowed_departments: ["Finance"],
+        allowed_roles: ["Finance"],
+        version: "2.0",
+        effective_date: "2026-09-01",
+        content: "Q4 projected revenue is 120 crore."
+      },
+      {
+        document_id: "DOC-102",
+        title: "Engineering Roadmap",
+        classification: "Internal",
+        allowed_departments: ["Engineering"],
+        allowed_roles: ["Engineer"],
+        version: "1.0",
+        effective_date: "2026-08-01",
+        content: "The next platform release is planned for October."
+      }
+    ],
+    prompt: "What is the Q4 revenue forecast?"
+  },
+  B: {
+    id: "Test Input B",
+    title: "Relevant but unauthorized",
+    user: {
+      user_id: "U205",
+      role: "Marketing",
+      department: "Marketing",
+      clearance: "Internal"
+    },
+    documents: [
+      {
+        document_id: "DOC-201",
+        title: "Q4 Revenue Forecast",
+        classification: "Restricted",
+        allowed_departments: ["Executive"],
+        allowed_roles: ["Executive"],
+        version: "3.0",
+        effective_date: "2026-09-01",
+        content: "Q4 projected revenue is 145 crore."
+      }
+    ],
+    prompt: "What is the Q4 revenue forecast?"
+  },
+  C: {
+    id: "Test Input C",
+    title: "Authorized conflict",
+    user: {
+      user_id: "U301",
+      role: "Finance",
+      department: "Finance",
+      clearance: "Internal"
+    },
+    documents: [
+      {
+        document_id: "DOC-301",
+        title: "Q4 Forecast",
+        classification: "Internal",
+        allowed_departments: ["Finance"],
+        allowed_roles: ["Finance"],
+        version: "1.0",
+        effective_date: "2026-06-01",
+        content: "Q4 projected revenue is 110 crore."
+      },
+      {
+        document_id: "DOC-302",
+        title: "Q4 Forecast",
+        classification: "Internal",
+        allowed_departments: ["Finance"],
+        allowed_roles: ["Finance"],
+        version: "2.0",
+        effective_date: "2026-09-01",
+        content: "Q4 projected revenue is 125 crore."
+      }
+    ],
+    prompt: "What is the latest Q4 revenue forecast?"
+  }
+};
 
 interface LandingPageProps {
   onSignIn: () => void;
@@ -47,6 +143,20 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
   const [contactSubmitting, setContactSubmitting] = useState(false);
   const [contactError, setContactError] = useState("");
   const [contactSubmitted, setContactSubmitted] = useState(false);
+  const [activeJsonTab, setActiveJsonTab] = useState<"A" | "B" | "C" | null>(null);
+  const [copiedScenario, setCopiedScenario] = useState<string | null>(null);
+
+  const copyJson = (scenarioKey: "A" | "B" | "C") => {
+    const s = TEST_SCENARIOS[scenarioKey];
+    const full = JSON.stringify({ user: s.user, documents: s.documents, prompt: s.prompt }, null, 2);
+    try {
+      navigator.clipboard.writeText(full);
+      setCopiedScenario(scenarioKey);
+      setTimeout(() => setCopiedScenario(null), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const toggleTheme = () => {
     const next = !dark;
@@ -356,21 +466,55 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
             <div className="rounded-2xl border border-emerald-300 bg-white dark:border-emerald-500/30 dark:bg-slate-900/60 p-6 flex flex-col justify-between shadow-sm dark:shadow-none">
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Test Scenario A</span>
-                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25 px-2 py-0.5 rounded-full">Authorized Access</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Test Input A</span>
+                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25 px-2 py-0.5 rounded-full">Authorized answer</span>
                 </div>
-                <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Finance Q4 Forecast Inquiry</h3>
+                <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Authorized Answer</h3>
                 <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  <b>User:</b> Finance Analyst (<code className="text-emerald-700 dark:text-emerald-300 font-semibold">Internal</code> clearance).<br />
+                  <b>User:</b> U102 (Finance, Clearance: <code className="text-emerald-700 dark:text-emerald-300 font-semibold">Internal</code>).<br />
                   <b>Prompt:</b> "What is the Q4 revenue forecast?"<br />
-                  <b>Result:</b> Returns verified 120 crore projected revenue citing <code className="text-slate-800 dark:text-slate-200 font-semibold">DOC-101</code>.
+                  <b>Result:</b> Answers 120 crore from <code className="text-slate-800 dark:text-slate-200 font-semibold">DOC-101</code>; <code className="text-slate-800 dark:text-slate-200 font-semibold">DOC-102</code> (Engineering) is denied and withheld from LLM.
                 </p>
+
+                {/* Inspectable JSON Inputs */}
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => setActiveJsonTab(activeJsonTab === "A" ? null : "A")}
+                    className="flex items-center justify-between w-full text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Code className="h-3.5 w-3.5" />
+                      {activeJsonTab === "A" ? "Hide Test JSON Inputs" : "Inspect Test Input JSON"}
+                    </span>
+                    {activeJsonTab === "A" ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                  {activeJsonTab === "A" && (
+                    <div className="mt-2.5 rounded-lg bg-slate-950 p-3 text-[11px] font-mono text-slate-200 space-y-2">
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-800">
+                        <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Test A Inputs</span>
+                        <button
+                          onClick={() => copyJson("A")}
+                          className="px-2 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1 transition"
+                        >
+                          {copiedScenario === "A" ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                          {copiedScenario === "A" ? "Copied!" : "Copy JSON"}
+                        </button>
+                      </div>
+                      <p className="text-slate-400 text-[10px] font-semibold">// user.json</p>
+                      <pre className="text-[10.5px] leading-relaxed text-emerald-300">{JSON.stringify(TEST_SCENARIOS.A.user, null, 2)}</pre>
+                      <p className="text-slate-400 text-[10px] font-semibold pt-1">// documents.json</p>
+                      <pre className="max-h-36 overflow-y-auto text-[10.5px] leading-relaxed text-slate-300 scroll-thin">{JSON.stringify(TEST_SCENARIOS.A.documents, null, 2)}</pre>
+                      <p className="text-slate-400 text-[10px] font-semibold pt-1">// prompt</p>
+                      <p className="text-amber-300">"{TEST_SCENARIOS.A.prompt}"</p>
+                    </div>
+                  )}
+                </div>
               </div>
               <button
                 onClick={onSignIn}
                 className="mt-6 w-full py-2.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 dark:bg-emerald-500/15 dark:hover:bg-emerald-500/25 dark:text-emerald-300 dark:border-emerald-500/30 transition flex items-center justify-center gap-1.5"
               >
-                <span>Try as Finance Employee</span>
+                <span>Run Test Case A</span>
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -379,21 +523,55 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
             <div className="rounded-2xl border border-rose-300 bg-white dark:border-rose-500/30 dark:bg-slate-900/60 p-6 flex flex-col justify-between shadow-sm dark:shadow-none">
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-rose-600 dark:text-rose-400 uppercase tracking-wider">Test Scenario B</span>
-                  <span className="bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/25 px-2 py-0.5 rounded-full">Relevant but Unauthorized</span>
+                  <span className="text-rose-600 dark:text-rose-400 uppercase tracking-wider">Test Input B</span>
+                  <span className="bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/25 px-2 py-0.5 rounded-full">Relevant but unauthorized</span>
                 </div>
-                <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Marketing Requests Restricted Data</h3>
+                <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Relevant but Unauthorized</h3>
                 <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  <b>User:</b> Marketing Specialist (<code className="text-rose-700 dark:text-rose-300 font-semibold">Internal</code> clearance).<br />
+                  <b>User:</b> U205 (Marketing, Clearance: <code className="text-rose-700 dark:text-rose-300 font-semibold">Internal</code>).<br />
                   <b>Prompt:</b> "What is the Q4 revenue forecast?"<br />
-                  <b>Result:</b> Safely withheld without revealing confidential numbers or giving document content to the LLM.
+                  <b>Result:</b> Safe refusal. <code className="text-slate-800 dark:text-slate-200 font-semibold">DOC-201</code> is Restricted/Executive — its content (145 crore) never reaches LLM, and an admin security alert is triggered.
                 </p>
+
+                {/* Inspectable JSON Inputs */}
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => setActiveJsonTab(activeJsonTab === "B" ? null : "B")}
+                    className="flex items-center justify-between w-full text-left text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Code className="h-3.5 w-3.5" />
+                      {activeJsonTab === "B" ? "Hide Test JSON Inputs" : "Inspect Test Input JSON"}
+                    </span>
+                    {activeJsonTab === "B" ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                  {activeJsonTab === "B" && (
+                    <div className="mt-2.5 rounded-lg bg-slate-950 p-3 text-[11px] font-mono text-slate-200 space-y-2">
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-800">
+                        <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">Test B Inputs</span>
+                        <button
+                          onClick={() => copyJson("B")}
+                          className="px-2 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1 transition"
+                        >
+                          {copiedScenario === "B" ? <Check className="h-3 w-3 text-rose-400" /> : <Copy className="h-3 w-3" />}
+                          {copiedScenario === "B" ? "Copied!" : "Copy JSON"}
+                        </button>
+                      </div>
+                      <p className="text-slate-400 text-[10px] font-semibold">// user.json</p>
+                      <pre className="text-[10.5px] leading-relaxed text-rose-300">{JSON.stringify(TEST_SCENARIOS.B.user, null, 2)}</pre>
+                      <p className="text-slate-400 text-[10px] font-semibold pt-1">// documents.json</p>
+                      <pre className="max-h-36 overflow-y-auto text-[10.5px] leading-relaxed text-slate-300 scroll-thin">{JSON.stringify(TEST_SCENARIOS.B.documents, null, 2)}</pre>
+                      <p className="text-slate-400 text-[10px] font-semibold pt-1">// prompt</p>
+                      <p className="text-amber-300">"{TEST_SCENARIOS.B.prompt}"</p>
+                    </div>
+                  )}
+                </div>
               </div>
               <button
                 onClick={onSignIn}
                 className="mt-6 w-full py-2.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 dark:bg-rose-500/15 dark:hover:bg-rose-500/25 dark:text-rose-300 dark:border-rose-500/30 transition flex items-center justify-center gap-1.5"
               >
-                <span>Test Access Denial</span>
+                <span>Run Test Case B</span>
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -402,21 +580,55 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
             <div className="rounded-2xl border border-teal-300 bg-white dark:border-teal-500/30 dark:bg-slate-900/60 p-6 flex flex-col justify-between shadow-sm dark:shadow-none">
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-teal-600 dark:text-teal-400 uppercase tracking-wider">Test Scenario C</span>
-                  <span className="bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/25 px-2 py-0.5 rounded-full">Authorized Conflict</span>
+                  <span className="text-teal-600 dark:text-teal-400 uppercase tracking-wider">Test Input C</span>
+                  <span className="bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/25 px-2 py-0.5 rounded-full">Authorized conflict</span>
                 </div>
-                <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Policy Revisions & Conflicts</h3>
+                <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Authorized Conflict</h3>
                 <p className="mt-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                  <b>User:</b> Authorized Finance Staff.<br />
-                  <b>Conflict:</b> Older v1.0 (110 cr) vs latest v2.0 (125 cr).<br />
-                  <b>Result:</b> Correctly evaluates date/version precedence and cites the latest authoritative document.
+                  <b>User:</b> U301 (Finance, Clearance: <code className="text-teal-700 dark:text-teal-300 font-semibold">Internal</code>).<br />
+                  <b>Prompt:</b> "What is the latest Q4 revenue forecast?"<br />
+                  <b>Result:</b> Answers 125 crore from <code className="text-slate-800 dark:text-slate-200 font-semibold">DOC-302</code> (v2.0, latest); flags <code className="text-slate-800 dark:text-slate-200 font-semibold">DOC-301</code> (v1.0, 110 crore) as superseded.
                 </p>
+
+                {/* Inspectable JSON Inputs */}
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={() => setActiveJsonTab(activeJsonTab === "C" ? null : "C")}
+                    className="flex items-center justify-between w-full text-left text-xs font-semibold text-teal-600 dark:text-teal-400 hover:underline"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Code className="h-3.5 w-3.5" />
+                      {activeJsonTab === "C" ? "Hide Test JSON Inputs" : "Inspect Test Input JSON"}
+                    </span>
+                    {activeJsonTab === "C" ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+                  {activeJsonTab === "C" && (
+                    <div className="mt-2.5 rounded-lg bg-slate-950 p-3 text-[11px] font-mono text-slate-200 space-y-2">
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-800">
+                        <span className="text-[10px] text-teal-400 font-bold uppercase tracking-wider">Test C Inputs</span>
+                        <button
+                          onClick={() => copyJson("C")}
+                          className="px-2 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center gap-1 transition"
+                        >
+                          {copiedScenario === "C" ? <Check className="h-3 w-3 text-teal-400" /> : <Copy className="h-3 w-3" />}
+                          {copiedScenario === "C" ? "Copied!" : "Copy JSON"}
+                        </button>
+                      </div>
+                      <p className="text-slate-400 text-[10px] font-semibold">// user.json</p>
+                      <pre className="text-[10.5px] leading-relaxed text-teal-300">{JSON.stringify(TEST_SCENARIOS.C.user, null, 2)}</pre>
+                      <p className="text-slate-400 text-[10px] font-semibold pt-1">// documents.json</p>
+                      <pre className="max-h-36 overflow-y-auto text-[10.5px] leading-relaxed text-slate-300 scroll-thin">{JSON.stringify(TEST_SCENARIOS.C.documents, null, 2)}</pre>
+                      <p className="text-slate-400 text-[10px] font-semibold pt-1">// prompt</p>
+                      <p className="text-amber-300">"{TEST_SCENARIOS.C.prompt}"</p>
+                    </div>
+                  )}
+                </div>
               </div>
               <button
                 onClick={onSignIn}
                 className="mt-6 w-full py-2.5 rounded-lg text-xs font-semibold bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-300 dark:bg-teal-500/15 dark:hover:bg-teal-500/25 dark:text-teal-300 dark:border-teal-500/30 transition flex items-center justify-center gap-1.5"
               >
-                <span>Test Version Conflict</span>
+                <span>Run Test Case C</span>
                 <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </div>

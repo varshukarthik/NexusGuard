@@ -18,6 +18,7 @@ from ..core.rbac import LEVELS
 from ..core.security import Principal, require
 from ..db.session import get_db
 from ..services import audit, composer, llm
+from ..services.email_alerts import send_unauthorized_access_alert_async
 from ..services.guard import redact
 from ..services.retrieval import DocMeta, MemoryCorpus, retrieve
 
@@ -171,6 +172,19 @@ def evaluate(body: LabIn, request: Request, p: Principal = Depends(require("poli
     engine = "offline"
     if res.only_restricted_answer():
         answer = composer.compose(body.prompt, res)
+        top = res.withheld[0] if res.withheld else {"classification": "RESTRICTED", "doc_id": "DOC-201"}
+        send_unauthorized_access_alert_async(
+            user_name=f"Evaluator / Sandbox User ({body.user.user_id})",
+            user_id=body.user.user_id,
+            role=body.user.role,
+            clearance=body.user.clearance,
+            query=body.prompt,
+            resource=f"Policy Lab Test Case: {top.get('doc_id', 'DOC-201')}",
+            classification=top.get("classification", "RESTRICTED"),
+            reason="Sandbox evaluation: User clearance or role is insufficient for requested document.",
+            request_id=getattr(request.state, "request_id", ""),
+            ip=getattr(p, "ip", ""),
+        )
     elif llm.enabled():
         try:
             resp = llm.chat([{"role": "system", "content": LAB_SYSTEM},
