@@ -155,6 +155,7 @@ TOOL_POLICIES: dict[str, dict] = {
     "get_department":      {"permission": "documents:read",   "risk": "LOW",    "confirm": False},
     "analytics_query":     {"permission": "analytics:read",   "risk": "LOW",    "confirm": False},
     "get_project":         {"permission": "projects:read",    "risk": "LOW",    "confirm": False},
+    "search_repositories": {"permission": "repositories:read", "risk": "LOW",    "confirm": False},
     # personal / employee tools
     "get_employee":        {"permission": "directory:read",   "risk": "LOW",    "confirm": False},
     "get_my_projects":     {"permission": "projects:read_self", "risk": "LOW",  "confirm": False},

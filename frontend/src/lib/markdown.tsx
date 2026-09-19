@@ -1,12 +1,12 @@
-import { FileText } from "lucide-react";
+import { ExternalLink, FileCode, FileText } from "lucide-react";
 import { ReactNode } from "react";
 
 // Safe markdown renderer (no HTML injection — everything is rendered as React text nodes).
 // Supports: headings, paragraphs, bullet & numbered lists (with continuation lines), tables, fenced code blocks,
-// blockquotes, bold / italic / inline code, and [DOC-xxxx] citation chips that open the source document.
+// blockquotes, bold / italic / inline code, [DOC-xxxx] citations, and [label](url) external/code citation links.
 function inline(text: string, onCite?: (id: string) => void, key = ""): ReactNode[] {
   const out: ReactNode[] = [];
-  const rx = /(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|`[^`]+`|\[((?:DOC|ORB)-[\w-]+)\])/g;
+  const rx = /(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|`[^`]+`|\[((?:DOC|ORB)-[\w-]+)\]|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
@@ -16,13 +16,31 @@ function inline(text: string, onCite?: (id: string) => void, key = ""): ReactNod
     const k = `${key}-${i++}`;
     if (t.startsWith("**")) out.push(<strong key={k} className="font-semibold text-slate-900 dark:text-white">{t.slice(2, -2)}</strong>);
     else if (t.startsWith("`")) out.push(<code key={k} className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.85em] dark:bg-slate-800">{t.slice(1, -1)}</code>);
-    else if (t.startsWith("[")) {
+    else if (m[2]) {
       const id = m[2];
       out.push(
         <button key={k} onClick={() => onCite?.(id)} title={`Open source document ${id}`} aria-label={`Open source document ${id}`}
           className="mx-0.5 inline-flex translate-y-[-1px] items-center gap-0.5 rounded-md bg-brand-50 px-1.5 py-px align-middle font-mono text-[10.5px] font-medium text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-300 dark:ring-brand-500/30">
           <FileText className="h-2.5 w-2.5" />{id}
         </button>);
+    } else if (m[3] && m[4]) {
+      const label = m[3];
+      const href = m[4];
+      const isCode = href.includes("github.com") || label.includes(":") || label.includes(".py") || label.includes(".ts") || label.includes(".js") || label.includes(".go");
+      out.push(
+        <a
+          key={k}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Open external link: ${label}`}
+          className="mx-0.5 inline-flex translate-y-[-1px] items-center gap-1 rounded-md bg-slate-100 px-1.5 py-0.5 align-middle font-mono text-[11px] font-medium text-brand-700 ring-1 ring-inset ring-slate-200 hover:bg-brand-50 hover:text-brand-800 dark:bg-slate-800 dark:text-brand-300 dark:ring-slate-700 dark:hover:bg-brand-500/20"
+        >
+          {isCode ? <FileCode className="h-3 w-3 text-brand-600 dark:text-brand-400" /> : null}
+          <span>{label}</span>
+          <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+        </a>
+      );
     } else out.push(<em key={k}>{t.slice(1, -1)}</em>);
     last = m.index + t.length;
   }

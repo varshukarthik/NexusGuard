@@ -17,7 +17,7 @@ from .core.errors import AppError
 from .core.middleware import EdgeMiddleware
 from .db import session as dbsession
 from .db.seed import ensure_index, seed
-from .routers import agentic, auth, contact, documents, governance, policy_lab, workspace
+from .routers import agentic, auth, contact, documents, governance, policy_lab, repositories, workspace
 from .services import llm
 from .services.embeddings import embedder
 
@@ -81,7 +81,7 @@ async def unhandled(request: Request, exc: Exception):
                         status_code=500)
 
 
-for r in (auth.router, workspace.router, documents.router, governance.router, policy_lab.router, agentic.router, contact.router):
+for r in (auth.router, workspace.router, documents.router, repositories.router, governance.router, policy_lab.router, agentic.router, contact.router):
     app.include_router(r, prefix="/api")
 
 

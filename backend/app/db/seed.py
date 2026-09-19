@@ -21,7 +21,7 @@ from ..core.security import hash_password, token_hash
 from ..services.embeddings import embedder
 from ..services.ingestion import bulk_index, index_document
 from .models import (ApprovalRequest, AuditLog, Company, Conversation, Department, Document, DocumentChunk,
-                     LeaveBalance, LeaveRequest, Message, Permission, Project, Role, SecurityAlert, Session, Task,
+                     LeaveBalance, LeaveRequest, Message, Permission, Project, Repository, Role, SecurityAlert, Session, Task,
                      User)
 from .seed_documents import DOCUMENTS, ORBIT_DOCUMENTS
 from .seed_documents_core import CORE_DOCUMENTS
@@ -61,13 +61,16 @@ PERMISSIONS = {
     "requests:create": "Create access / software / document / procurement requests",
     "it:catalog": "Browse the internal software catalogue",
     "tickets:read_all": "View all IT tickets (IT staff)",
+    "repositories:read": "View repositories and code index within clearance",
+    "repositories:import": "Import code repositories into the knowledge base",
+    "repositories:manage": "Sync, configure, or disconnect imported repositories",
 }
 # Guest is a real authorization role — server-side it can only reach PUBLIC data (see core/rbac.GUEST_ROLE).
-GUEST = ["documents:read", "projects:read", "analytics:read"]
+GUEST = ["documents:read", "projects:read", "analytics:read", "repositories:read"]
 BASE = ["workspace:use", "documents:read", "documents:upload", "directory:read", "leave:read_self", "leave:create",
         "tickets:create", "email:draft", "email:send", "tasks:read_self", "projects:read", "projects:read_self",
         "approvals:create", "audit:read_self", "policy_lab:use", "analytics:read", "requests:read_self",
-        "requests:create", "it:catalog"]
+        "requests:create", "it:catalog", "repositories:read", "repositories:import", "repositories:manage"]
 MANAGER = BASE + ["leave:read_team", "approvals:decide"]
 HR = MANAGER + ["leave:read_all", "directory:read_sensitive", "documents:classify_approve"]
 EXECUTIVE = MANAGER + ["documents:classify_approve", "documents:delete", "audit:read_all", "security:read",
@@ -237,6 +240,7 @@ def seed(db: DBSession) -> None:
 
     # Chunk + embed every document in batches (hybrid-search index is built lazily from these chunks).
     bulk_index(db, db.scalars(select(Document)).all())
+    ensure_repositories(db)
     db.commit()
     log.info("Seed complete.")
 
@@ -496,3 +500,30 @@ def ensure_index(db: DBSession) -> None:
         log.info("Re-indexing %s chunks with %s", stale, embedder.model_id)
         bulk_index(db, db.scalars(select(Document)).all())
         db.commit()
+
+
+def ensure_repositories(db: DBSession) -> None:
+    """Seeds the default NovaTech / Enterprise-Agent repository if none exists."""
+    existing = db.scalar(select(Repository).where(Repository.company_id == NT))
+    if not existing:
+        log.info("Seeding default repository for NovaTech Solutions...")
+        from ..services.repo_ingestion import ingest_repository_files, load_repository_content
+        repo = Repository(
+            id="repo_novatech_agent",
+            company_id=NT,
+            name="Enterprise-Agent",
+            full_name="novatech/enterprise-agent",
+            github_url="https://github.com/novatech/enterprise-agent",
+            default_branch="main",
+            classification="INTERNAL",
+            allowed_departments=["*"],
+            allowed_roles=["*"],
+            status="ready",
+            description="NovaTech enterprise multi-agent backend & security core",
+        )
+        db.add(repo)
+        db.commit()
+        files = load_repository_content("local", "main")
+        ingest_repository_files(db, repo, files)
+        log.info("Default repository seeded with %s files and %s chunks.", repo.file_count, repo.chunk_count)
+

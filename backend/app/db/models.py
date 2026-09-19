@@ -201,6 +201,83 @@ class DocumentChunk(Base):
     embedding_model: Mapped[str] = mapped_column(String(80), default="")
 
 
+class RepositoryConnection(Base):
+    __tablename__ = "repository_connections"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("ghc_"))
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(30), default="github")
+    github_user: Mapped[str] = mapped_column(String(120), default="")
+    github_avatar: Mapped[str] = mapped_column(String(300), default="")
+    scopes: Mapped[list] = mapped_column(JSON, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Repository(Base):
+    __tablename__ = "repositories"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("repo_"))
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), index=True)
+    owner_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(120))
+    full_name: Mapped[str] = mapped_column(String(200), index=True)
+    github_url: Mapped[str] = mapped_column(String(300))
+    description: Mapped[str] = mapped_column(Text, default="")
+    default_branch: Mapped[str] = mapped_column(String(60), default="main")
+    commit_sha: Mapped[str] = mapped_column(String(60), default="")
+    visibility: Mapped[str] = mapped_column(String(20), default="public")
+    classification: Mapped[str] = mapped_column(String(20), default="INTERNAL", index=True)
+    allowed_departments: Mapped[list] = mapped_column(JSON, default=list)
+    allowed_roles: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(30), default="ready", index=True)
+    status_message: Mapped[str] = mapped_column(String(300), default="")
+    file_count: Mapped[int] = mapped_column(Integer, default=0)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    languages: Mapped[dict] = mapped_column(JSON, default=dict)
+    tree_structure: Mapped[list] = mapped_column(JSON, default=list)
+    security_scan: Mapped[dict] = mapped_column(JSON, default=dict)
+    excluded_paths: Mapped[list] = mapped_column(JSON, default=list)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    owner: Mapped[User | None] = relationship(lazy="joined")
+
+
+class RepositoryFile(Base):
+    __tablename__ = "repository_files"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("rf_"))
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), index=True)
+    repository_id: Mapped[str] = mapped_column(ForeignKey("repositories.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(String(500), index=True)
+    language: Mapped[str] = mapped_column(String(40), default="text")
+    file_hash: Mapped[str] = mapped_column(String(64), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    line_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_doc: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), default="indexed")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RepositoryChunk(Base):
+    __tablename__ = "repository_chunks"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("rchk_"))
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), index=True)
+    repository_id: Mapped[str] = mapped_column(ForeignKey("repositories.id", ondelete="CASCADE"), index=True)
+    file_id: Mapped[str] = mapped_column(ForeignKey("repository_files.id", ondelete="CASCADE"), index=True)
+    file_path: Mapped[str] = mapped_column(String(500), index=True)
+    language: Mapped[str] = mapped_column(String(40), default="text")
+    symbol: Mapped[str] = mapped_column(String(120), default="")
+    symbol_type: Mapped[str] = mapped_column(String(40), default="")
+    start_line: Mapped[int] = mapped_column(Integer, default=1)
+    end_line: Mapped[int] = mapped_column(Integer, default=1)
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    content: Mapped[str] = mapped_column(Text)
+    embedding = mapped_column(Embedding(DIM), nullable=True)
+    embedding_model: Mapped[str] = mapped_column(String(80), default="")
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("conv_"))

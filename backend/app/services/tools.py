@@ -85,6 +85,13 @@ TOOL_SCHEMAS = {
                             "(same as search_knowledge without filters).", {"query": _S}, ["query"]),
     "search_policies": _fn("search_policies", "Search only policies, procedures, guides, FAQs and checklists.",
                            {"query": _S}, ["query"]),
+    "search_repositories": _fn(
+        "search_repositories",
+        "Search indexed code repositories, source files, functions, and developer documentation within user's clearance. "
+        "Returns code excerpts, symbols, line numbers, and GitHub deep links for technical questions.",
+        {"query": _S, "repository_id": {"type": "string", "description": "optional repository id"}},
+        ["query"]
+    ),
     "get_leave_policy": _fn("get_leave_policy", "Get the current leave policy (entitlements, carry-forward, how to "
                             "apply).", {}, []),
     "summarize_document": _fn("summarize_document", "Load one authorized document in full so it can be summarized. "
@@ -164,6 +171,7 @@ TOOL_SCHEMAS = {
 
 TOOL_AGENT = {
     "search_knowledge": "Knowledge Agent", "search_documents": "Knowledge Agent", "search_policies": "Knowledge Agent",
+    "search_repositories": "Knowledge Agent",
     "get_leave_policy": "HR Agent", "get_leave_balance": "HR Agent", "get_employee": "HR Agent",
     "create_leave_request": "Workflow Agent", "create_it_ticket": "Workflow Agent", "create_request": "Workflow Agent",
     "draft_email": "Workflow Agent", "send_email": "Workflow Agent", "request_approval": "Workflow Agent",
@@ -328,6 +336,30 @@ def t_search_policies(ctx: ToolContext, query: str, department: str = "") -> Too
     if out.status == "not_found":
         out = _search(ctx, "search_policies", query, {"exclude_doc_types": {"Status Report"}, **boost})
     return out
+
+
+def t_search_repositories(ctx: ToolContext, query: str, repository_id: str = "") -> ToolOutcome:
+    from .repo_retrieval import retrieve_repository_chunks
+    rid = repository_id.strip() if repository_id else None
+    res = retrieve_repository_chunks(ctx.db, ctx.principal, query, repository_id=rid, limit=5)
+    for h in res.hits:
+        ctx.cite("repository_file", h.chunk_id, f"{h.repo_name}:{h.file_path}", h.classification,
+                 extra=f"Lines {h.start_line}–{h.end_line} ({h.symbol}) [{h.github_url}]")
+
+    if not res.hits:
+        if res.denied_repos > 0:
+            summary = f"0 results · {res.denied_repos} repository/repositories withheld by clearance policy"
+            return ToolOutcome(
+                "search_repositories", "denied", summary,
+                f"ACCESS NOTICE: {res.denied_repos} relevant code repository/repositories exist that your role lacks clearance to view.",
+                data={"withheld": res.denied_repos}
+            )
+        return ToolOutcome("search_repositories", "ok", "No matching code found across authorized repositories.",
+                           "No matching code snippets or repository documentation found.")
+
+    summary = f"{len(res.hits)} code excerpt(s) · {res.authorized_repos} repository/repositories authorized"
+    return ToolOutcome("search_repositories", "ok", summary, res.llm_context(),
+                       data={"hits": [h.to_citation() for h in res.hits], "withheld": len(res.withheld_repos)})
 
 
 def t_get_leave_policy(ctx: ToolContext) -> ToolOutcome:
@@ -931,7 +963,8 @@ def t_analytics_query(ctx: ToolContext, dataset: str, metric: str = "count", gro
 
 IMPL = {
     "search_knowledge": t_search_knowledge, "search_documents": t_search_documents,
-    "search_policies": t_search_policies, "get_leave_policy": t_get_leave_policy,
+    "search_policies": t_search_policies, "search_repositories": t_search_repositories,
+    "get_leave_policy": t_get_leave_policy,
     "summarize_document": t_summarize_document, "compare_documents": t_compare_documents,
     "latest_updates": t_latest_updates, "get_department": t_get_department, "analytics_query": t_analytics_query,
     "get_project": t_get_project, "get_my_projects": t_get_my_projects, "get_pending_tasks": t_get_pending_tasks,

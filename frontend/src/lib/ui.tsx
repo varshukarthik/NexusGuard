@@ -82,12 +82,13 @@ export function PageHeader({ title, subtitle, icon, actions }: { title: string; 
   );
 }
 
-export function Empty({ icon, title, text }: { icon: ReactNode; title: string; text?: string }) {
+export function Empty({ icon, title, text, action }: { icon: ReactNode; title: string; text?: string; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center py-14 text-center">
       <div className="mb-3 rounded-full bg-slate-100 p-3 text-slate-400 dark:bg-slate-800">{icon}</div>
       <p className="font-medium text-slate-700 dark:text-slate-200">{title}</p>
       {text && <p className="mt-1 max-w-sm text-sm text-slate-500">{text}</p>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }

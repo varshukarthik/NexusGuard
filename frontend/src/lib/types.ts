@@ -222,5 +222,49 @@ export interface Approval {
   decided_at: string | null;
 }
 
+export interface RepoTreeItem {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  children?: RepoTreeItem[];
+  language?: string;
+  size?: number;
+}
+
+export interface SecurityFinding {
+  type: string;
+  file: string;
+  line?: number;
+  length?: number;
+  timestamp?: string;
+}
+
+export interface RepositoryItem {
+  id: string;
+  company_id: string;
+  name: string;
+  repo_name: string;
+  owner_login: string;
+  clone_url: string;
+  default_branch: string;
+  classification: Classification;
+  allowed_departments: string[];
+  allowed_roles: string[];
+  status: "SCANNING" | "INDEXING" | "READY" | "ERROR" | "FAILED";
+  total_files: number;
+  total_lines: number;
+  total_chunks: number;
+  sync_interval: string;
+  last_synced_at: string | null;
+  created_at: string | null;
+  tree_structure: RepoTreeItem[];
+  security_scan_report: SecurityFinding[];
+  secrets_count: number;
+  description: string | null;
+  access: "granted" | "denied";
+  access_rule: string;
+}
+
 export type Page =
   | "chat" | "tasks" | "approvals" | "documents" | "security" | "audit" | "admin" | "lab" | "settings" | "work";
+
