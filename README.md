@@ -218,5 +218,3 @@ required a non-existent permission; self audit logs revealed titles of denied do
 * Guest identities are short-lived rows (retired on logout or after the TTL); a production system would use a separate anonymous-session store.
 * Heuristic injection detection is good at common patterns, not a guarantee. Email, tickets, requests and connectors are simulated back-ends. DDoS/WAF/VPC items in the Security Center remain labelled as prototype simulations.
 * Demo SSO is a simulated IdP; production must use real SAML/OIDC and `DEMO_MODE=false`.
-#   N e x u s G u a r d  
- 
