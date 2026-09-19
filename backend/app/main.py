@@ -46,9 +46,11 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="NovaTech Solutions — Enterprise Intelligence Platform", version="2.0.0", lifespan=lifespan,
               docs_url="/api/docs", openapi_url="/api/openapi.json", redoc_url=None)
 app.add_middleware(EdgeMiddleware)
-app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
-                   allow_credentials=False, allow_methods=["GET", "POST", "PATCH", "DELETE"],
-                   allow_headers=["Authorization", "Content-Type"])
+app.add_middleware(CORSMiddleware,
+                   allow_origins=["*"] if "*" in settings.cors_origins else [o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+                   allow_credentials=False,
+                   allow_methods=["*"],
+                   allow_headers=["*"])
 
 
 @app.exception_handler(AppError)

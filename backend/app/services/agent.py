@@ -27,6 +27,7 @@ from ..db.models import AIAction, User, WorkflowExecution
 from . import agents as A
 from . import audit, llm
 from .agentic import build_plan
+from .email_alerts import send_unauthorized_access_alert_async
 from .guard import redact, scan_injection
 from .nlp import INTENTS, fmt_date, today
 from .router import QUESTION_TYPES, Understanding, understand
@@ -375,6 +376,39 @@ def run_agent(db: DBSession, p: Principal, text: str, *, conversation_id: str, h
                           "context_manifest": manifest, "withheld": withheld_public,
                           "actions": [a.id for a in ctx.actions], "guest": is_guest(p)},
                  commit=False, request_id=request_id)
+
+    # Automated security incident alert to Admin (novasolutions@evocation.in -> varshukarthik7@gmail.com)
+    if access_denied or blocked or withheld_public:
+        res_label = "Restricted Corporate Data"
+        cls_label = "RESTRICTED"
+        reason_label = ""
+        if access_denied:
+            cls_label = access_denied.get("classification") or "RESTRICTED"
+            reason_label = access_denied.get("message") or "Access denied by zero-trust policy"
+            doc_ids = access_denied.get("document_ids") or []
+            res_label = f"Document(s): {', '.join(doc_ids)}" if doc_ids else "Restricted Knowledge Base"
+        elif blocked:
+            cls_label = "POLICY_VIOLATION"
+            reason_label = (security[-1]["message"] if security else "Blocked by security guardrail")
+            res_label = "AI Chat Assistant / Guardrail"
+        elif withheld_public:
+            cls_label = withheld_public[0].get("classification", "RESTRICTED")
+            doc_ids = [w["doc_id"] for w in withheld_public]
+            res_label = f"Withheld Document(s): {', '.join(doc_ids)}"
+            reason_label = f"{len(withheld_public)} document(s) withheld due to clearance mismatch ({p.clearance.upper()})"
+
+        send_unauthorized_access_alert_async(
+            user_name=p.full_name,
+            user_id=p.user_id,
+            role=p.role_name,
+            clearance=p.clearance,
+            query=text,
+            resource=res_label,
+            classification=cls_label,
+            reason=reason_label,
+            request_id=request_id,
+            ip=getattr(p, "ip", ""),
+        )
 
     meta = {
         "intent": intent, "question_type": QUESTION_TYPES.get(u.qtype, u.qtype), "agents": used_agents,

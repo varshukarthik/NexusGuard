@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     chat_rate_limit_per_minute: int = 20
     login_rate_limit_per_minute: int = 10
 
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "*"
     company_timezone: str = "Asia/Kolkata"
     max_upload_bytes: int = 2_000_000
 
@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     smtp_user: str = "novasolutions@evocation.in"
     smtp_password: str = "nova@123"
     contact_recipient: str = "novasolutions@evocation.in"
+    admin_alert_email: str = "varshukarthik7@gmail.com"
 
     @property
     def openai_enabled(self) -> bool:

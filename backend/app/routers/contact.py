@@ -21,7 +21,14 @@ class ContactRequest(BaseModel):
     message: str = ""
 
 
+@router.get("/contact")
+@router.get("/contact/")
+def contact_status():
+    return {"status": "ok", "service": "contact", "recipient": "novasolutions@evocation.in"}
+
+
 @router.post("/contact")
+@router.post("/contact/")
 def submit_contact(req: ContactRequest):
     settings = get_settings()
     log.info("Received contact inquiry from %s (%s)", req.email, req.organization)

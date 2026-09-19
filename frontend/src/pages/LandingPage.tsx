@@ -73,18 +73,32 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
     if (!contactEmail.trim()) return;
     setContactSubmitting(true);
     setContactError("");
+    const payload = {
+      email: contactEmail.trim(),
+      organization: contactOrg.trim(),
+      message: contactMsg.trim(),
+    };
     try {
-      await api.post("/contact", {
-        email: contactEmail.trim(),
-        organization: contactOrg.trim(),
-        message: contactMsg.trim(),
-      });
+      try {
+        await api.post("/contact", payload);
+      } catch (firstErr: any) {
+        // Direct backend fallback if proxy rewrite experiences delays or 404
+        const directRes = await fetch("https://nexusguard-backend-8711.onrender.com/api/contact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!directRes.ok) {
+          const data = await directRes.json().catch(() => ({}));
+          throw new Error(data.message || `Submission failed (${directRes.status})`);
+        }
+      }
       setContactSubmitted(true);
       setContactEmail("");
       setContactOrg("");
       setContactMsg("");
     } catch (err: any) {
-      setContactError(err?.message || "Could not send inquiry. Please try again or reach out directly at novasolutions@evocation.in.");
+      setContactError(err?.message || "Could not send inquiry. Please reach out directly at novasolutions@evocation.in.");
     } finally {
       setContactSubmitting(false);
     }

@@ -16,6 +16,7 @@ from ..core.security import Principal, get_principal, require
 from ..db.models import ApprovalRequest, Document, DocumentChunk, User
 from ..db.session import get_db
 from ..services import audit
+from ..services.email_alerts import send_unauthorized_access_alert_async
 from ..services.guard import redact
 from ..services.ingestion import classify, index_document, prepare_upload
 from ..services.retrieval import retrieve_for_principal
@@ -147,6 +148,18 @@ def get_document(doc_id: str, request: Request, p: Principal = Depends(get_princ
                      classification=d.classification, permission_result="DENIED", result="DENIED",
                      reason=f"Insufficient permissions — {dec.reason}",
                      risk="HIGH" if d.classification == "RESTRICTED" else "MEDIUM", request_id=request.state.request_id)
+        send_unauthorized_access_alert_async(
+            user_name=p.full_name,
+            user_id=p.user_id,
+            role=p.role_name,
+            clearance=p.clearance,
+            query=f"Direct document view request: {d.id} ({d.title})",
+            resource=f"{d.id} — {d.title}",
+            classification=d.classification,
+            reason=f"Insufficient permissions — {dec.reason}",
+            request_id=getattr(request.state, "request_id", ""),
+            ip=getattr(p, "ip", ""),
+        )
         raise AppError(403, "access_denied", f"Your current role does not have permission to access this "
                                              f"{d.classification.lower()} resource.",
                        {"classification": d.classification, "rule": dec.rule})
