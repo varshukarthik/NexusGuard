@@ -58,23 +58,23 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
       </div>
 
       {/* ==================== 1. TOP NAVBAR ==================== */}
-      <header className="sticky top-0 z-50 backdrop-blur-xl bg-[#070d17]/85 border-b border-slate-800/80 transition-colors">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
+      <header className="sticky top-0 z-50 backdrop-blur-xl bg-[#070d17]/90 border-b border-slate-800/80 transition-all shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-20 sm:h-24 flex items-center justify-between">
           {/* Brand Logo */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-            <div className="h-9 w-9 rounded-lg bg-emerald-500 flex items-center justify-center text-slate-950 shadow-md shadow-emerald-500/20">
-              <ShieldCheck className="h-5 w-5 text-slate-950 stroke-[2.4]" />
+            <div className="h-10 w-10 rounded-xl bg-emerald-500 flex items-center justify-center text-slate-950 shadow-md shadow-emerald-500/25">
+              <ShieldCheck className="h-6 w-6 text-slate-950 stroke-[2.4]" />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-[18px] tracking-tight text-white">Nova Solutions</span>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800/80 border border-slate-700/70 text-slate-300 tracking-wide">
+            <div className="flex items-center gap-2.5">
+              <span className="font-bold text-[19px] tracking-tight text-white">Nova Solutions</span>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800/80 border border-slate-700/70 text-slate-300 tracking-wide">
                 Enterprise
               </span>
             </div>
           </div>
 
           {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-8 text-[13.5px] font-medium text-slate-300">
+          <nav className="hidden md:flex items-center gap-9 text-[14px] font-medium text-slate-300">
             <button onClick={() => scrollTo("solutions")} className="hover:text-white transition hover:scale-105 transform duration-150">
               Solutions
             </button>
@@ -96,21 +96,21 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
           </nav>
 
           {/* Actions: Theme Toggle & Sign In */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3.5">
             <button
               onClick={() => setDark(!dark)}
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition"
+              className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition"
               title={dark ? "Switch to light theme" : "Switch to dark theme"}
               aria-label="Toggle theme"
             >
-              {dark ? <Sun className="h-4 w-4 text-amber-300" /> : <Moon className="h-4 w-4 text-slate-300" />}
+              {dark ? <Sun className="h-4.5 w-4.5 text-amber-300" /> : <Moon className="h-4.5 w-4.5 text-slate-300" />}
             </button>
 
             <button
               onClick={onSignIn}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13.5px] font-medium bg-slate-800/90 hover:bg-slate-700 border border-slate-700/80 text-white shadow-sm transition hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[14px] font-medium bg-slate-800/90 hover:bg-slate-700 border border-slate-700/80 text-white shadow-sm transition hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             >
-              <Lock className="h-3.5 w-3.5 text-slate-400" />
+              <Lock className="h-4 w-4 text-slate-400" />
               <span>Sign In</span>
             </button>
           </div>
@@ -118,9 +118,9 @@ export default function LandingPage({ onSignIn }: LandingPageProps) {
       </header>
 
       {/* ==================== 2. HERO SECTION ==================== */}
-      <section className="relative z-10 pt-20 pb-24 sm:pt-28 sm:pb-32 text-center px-4 sm:px-6 max-w-5xl mx-auto">
+      <section className="relative z-10 pt-16 pb-24 sm:pt-24 sm:pb-36 text-center px-4 sm:px-6 max-w-5xl mx-auto">
         {/* Top Tag Pill */}
-        <div className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/90 px-4 py-1.5 text-xs font-medium text-slate-300 shadow-inner mb-8">
+        <div className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/90 px-4 py-2 text-xs font-medium text-slate-300 shadow-inner mb-10">
           <Building2 className="h-3.5 w-3.5 text-emerald-400" />
           <span>Nova Solutions • Enterprise Digital Solutions</span>
         </div>
