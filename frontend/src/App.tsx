@@ -9,6 +9,7 @@ import { Ctx } from "./lib/app";
 import type { Me, Page } from "./lib/types";
 import Chat from "./pages/Chat";
 import Documents from "./pages/Documents";
+import LandingPage from "./pages/LandingPage";
 import Login from "./pages/Login";
 import Tasks from "./pages/Tasks";
 import { Spinner, Toast } from "./lib/ui";
@@ -33,6 +34,7 @@ export function allowedPages(me: Me): Page[] {
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [booting, setBooting] = useState(hasToken());
+  const [authView, setAuthView] = useState<"landing" | "login">("landing");
   const [page, setPage] = useState<Page>("chat");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [chatKey, setChatKey] = useState(0);
@@ -52,9 +54,10 @@ export default function App() {
   }, [refreshMe]);
 
   useEffect(() => {
-    document.title = me ? (me.is_guest ? "Guest Mode · NovaTech Solutions" : "NovaTech Solutions — Enterprise Intelligence Platform")
-      : "Sign in · NovaTech Solutions";
-  }, [me]);
+    document.title = me
+      ? (me.is_guest ? "Guest Mode · Nova Solutions" : "Nova Solutions — Enterprise Intelligence Platform")
+      : (authView === "login" ? "Sign in · Nova Solutions" : "Nova Solutions — Enterprise Digital Solutions");
+  }, [me, authView]);
 
   const notify = useCallback((msg: string, kind: "ok" | "err" = "ok") => setToast({ msg, kind }), []);
 
@@ -72,7 +75,22 @@ export default function App() {
   const go = useCallback((p: Page) => { setPage(p); setNavOpen(false); }, []);
 
   if (booting) return <Splash />;
-  if (!me) return <Login onLoggedIn={() => { setBooting(true); setPage("chat"); setConversationId(null); refreshMe(); }} />;
+  if (!me) {
+    if (authView === "login") {
+      return (
+        <Login
+          onBack={() => setAuthView("landing")}
+          onLoggedIn={() => {
+            setBooting(true);
+            setPage("chat");
+            setConversationId(null);
+            refreshMe();
+          }}
+        />
+      );
+    }
+    return <LandingPage onSignIn={() => setAuthView("login")} />;
+  }
 
   const pages = allowedPages(me);
   const current = pages.includes(page) ? page : "chat";
@@ -83,7 +101,7 @@ export default function App() {
   const newChat = () => { setConversationId(null); setChatKey((k) => k + 1); go("chat"); };
   const signOut = async () => {
     try { await api.post("/auth/logout"); } catch { /* */ }
-    setToken(null); setMe(null); setConversationId(null);
+    setToken(null); setMe(null); setConversationId(null); setAuthView("landing");
   };
 
   return (

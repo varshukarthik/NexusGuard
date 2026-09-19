@@ -6,3 +6,4 @@ __pycache__/
 *.db
 *.db-journal
 .pytest_cache/
+*.tsbuildinfo

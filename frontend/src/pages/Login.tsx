@@ -1,4 +1,4 @@
-import { AlertCircle, ArrowRight, Bot, ChevronDown, Database, Eye, EyeOff, Globe2, KeyRound, Loader2, Lock, ShieldCheck, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Bot, ChevronDown, Database, Eye, EyeOff, Globe2, KeyRound, Loader2, Lock, ShieldCheck, X } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { BrandLockup, NovaMark } from "../components/Brand";
 import { api, setToken } from "../lib/api";
@@ -15,7 +15,7 @@ const PILLARS = [
   { icon: ShieldCheck, title: "Controlled access", text: "Server-side authorization before every answer, human approval for every action, full audit." },
 ];
 
-export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
+export default function Login({ onLoggedIn, onBack }: { onLoggedIn: () => void; onBack?: () => void }) {
   const [cfg, setCfg] = useState<SSOConfig | null>(null);
   const [ident, setIdent] = useState("");
   const [password, setPassword] = useState("");
@@ -88,9 +88,30 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
 
       {/* ---- Sign-in ---- */}
       <main className="flex flex-1 flex-col">
-        <div className="flex items-center justify-between px-5 py-5 sm:px-8 lg:hidden"><BrandLockup size="sm" /></div>
+        <div className="flex items-center justify-between px-5 py-5 sm:px-8 lg:hidden">
+          <BrandLockup size="sm" />
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+            >
+              Back
+            </button>
+          )}
+        </div>
         <div className="flex flex-1 items-center justify-center px-4 pb-10 sm:px-8">
           <div className="w-full max-w-[420px] animate-rise">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-5 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Back to Overview</span>
+              </button>
+            )}
             {!sso ? (
               <>
                 <div className="mb-7">
