@@ -171,6 +171,16 @@ TOOL_POLICIES: dict[str, dict] = {
     "send_email":          {"permission": "email:send",       "risk": "HIGH",   "confirm": True},
     "request_approval":    {"permission": "approvals:create", "risk": "MEDIUM", "confirm": True},
     "delete_document":     {"permission": "documents:delete", "risk": "CRITICAL", "confirm": True},
+    # enterprise connector & skill tools
+    "search_jira_issues":   {"permission": "projects:read",     "risk": "LOW",    "confirm": False},
+    "create_jira_issue":    {"permission": "requests:create",   "risk": "MEDIUM", "confirm": True},
+    "search_emails":        {"permission": "workspace:use",     "risk": "LOW",    "confirm": False},
+    "search_teams_messages":{"permission": "workspace:use",     "risk": "LOW",    "confirm": False},
+    "post_teams_message":   {"permission": "workspace:use",     "risk": "MEDIUM", "confirm": True},
+    "lookup_entra_identity":{"permission": "directory:read",   "risk": "LOW",    "confirm": False},
+    "scan_vulnerabilities": {"permission": "repositories:read", "risk": "LOW",    "confirm": False},
+    "get_repo_architecture":{"permission": "repositories:read", "risk": "LOW",    "confirm": False},
+    "generate_enterprise_report": {"permission": "documents:read", "risk": "LOW", "confirm": False},
 }
 # Friendly aliases used in docs/prompts (same implementation + policy).
 TOOL_ALIASES = {"create_ticket": "create_it_ticket", "get_employee_info": "get_employee", "search_tasks": "get_pending_tasks",

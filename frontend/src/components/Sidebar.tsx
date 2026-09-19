@@ -1,5 +1,5 @@
 import { BarChart3, Bot, ClipboardCheck, FileText, FlaskConical, Globe2, ListChecks, MessageSquare, MoreHorizontal,
-  Pencil, Plus, ScrollText, Search, Settings, Shield, Trash2, X } from "lucide-react";
+  Network, Pencil, Plus, ScrollText, Search, Settings, Shield, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { useApp } from "../lib/app";
@@ -25,6 +25,7 @@ const NAV: { id: Page; label: string; icon: any }[] = [
   { id: "tasks", label: "My Work", icon: ListChecks },
   { id: "approvals", label: "Approvals", icon: ClipboardCheck },
   { id: "documents", label: "Knowledge Base", icon: FileText },
+  { id: "connectors", label: "Connectors & Skills", icon: Network },
   { id: "security", label: "Security Center", icon: Shield },
   { id: "audit", label: "Audit Logs", icon: ScrollText },
   { id: "admin", label: "Admin Dashboard", icon: BarChart3 },

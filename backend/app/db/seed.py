@@ -20,9 +20,9 @@ from sqlalchemy.orm import Session as DBSession
 from ..core.security import hash_password, token_hash
 from ..services.embeddings import embedder
 from ..services.ingestion import bulk_index, index_document
-from .models import (ApprovalRequest, AuditLog, Company, Conversation, Department, Document, DocumentChunk,
-                     LeaveBalance, LeaveRequest, Message, Permission, Project, Repository, Role, SecurityAlert, Session, Task,
-                     User)
+from .models import (AgentSkillModel, ApprovalRequest, AuditLog, Company, Connector, ConnectorItem, Conversation,
+                     Department, Document, DocumentChunk, LeaveBalance, LeaveRequest, Message, Permission, Project,
+                     Repository, Role, SecurityAlert, Session, Task, User)
 from .seed_documents import DOCUMENTS, ORBIT_DOCUMENTS
 from .seed_documents_core import CORE_DOCUMENTS
 
@@ -64,13 +64,18 @@ PERMISSIONS = {
     "repositories:read": "View repositories and code index within clearance",
     "repositories:import": "Import code repositories into the knowledge base",
     "repositories:manage": "Sync, configure, or disconnect imported repositories",
+    "connectors:read": "View enterprise connector statuses and metadata",
+    "connectors:manage": "Configure, sync, or disconnect enterprise connectors",
+    "skills:read": "View the agent skills library",
+    "skills:execute": "Execute or compose reusable agent skills",
 }
 # Guest is a real authorization role — server-side it can only reach PUBLIC data (see core/rbac.GUEST_ROLE).
-GUEST = ["documents:read", "projects:read", "analytics:read", "repositories:read"]
+GUEST = ["documents:read", "projects:read", "analytics:read", "repositories:read", "skills:read"]
 BASE = ["workspace:use", "documents:read", "documents:upload", "directory:read", "leave:read_self", "leave:create",
         "tickets:create", "email:draft", "email:send", "tasks:read_self", "projects:read", "projects:read_self",
         "approvals:create", "audit:read_self", "policy_lab:use", "analytics:read", "requests:read_self",
-        "requests:create", "it:catalog", "repositories:read", "repositories:import", "repositories:manage"]
+        "requests:create", "it:catalog", "repositories:read", "repositories:import", "repositories:manage",
+        "connectors:read", "connectors:manage", "skills:read", "skills:execute"]
 MANAGER = BASE + ["leave:read_team", "approvals:decide"]
 HR = MANAGER + ["leave:read_all", "directory:read_sensitive", "documents:classify_approve"]
 EXECUTIVE = MANAGER + ["documents:classify_approve", "documents:delete", "audit:read_all", "security:read",
@@ -526,4 +531,243 @@ def ensure_repositories(db: DBSession) -> None:
         files = load_repository_content("local", "main")
         ingest_repository_files(db, repo, files)
         log.info("Default repository seeded with %s files and %s chunks.", repo.file_count, repo.chunk_count)
+
+
+def ensure_connectors_and_skills(db: DBSession) -> None:
+    """Seeds the 5 default enterprise connectors, 6 reusable agent skills, and indexed enterprise items."""
+    now = datetime.now(timezone.utc)
+
+    # 1. Connectors
+    existing_conns = db.scalars(select(Connector).where(Connector.company_id == NT)).all()
+    if not existing_conns:
+        log.info("Seeding enterprise connectors for NovaTech Solutions...")
+        conns = [
+            Connector(
+                id="conn_github", company_id=NT, provider="github", name="GitHub",
+                category="Code & DevOps",
+                description="Source code repositories, pull requests, commits, releases, and CI/CD workflows.",
+                status="connected", auth_type="oauth2", mode="DEMO CONNECTOR",
+                account_name="novatech-solutions", account_email="devops@novatech.demo",
+                scopes=["repo", "read:org", "read:user", "workflow", "read:packages"],
+                resources=["novatech/enterprise-agent", "novatech/frontend-portal", "novatech/security-scanner"],
+                agent_access={"allowed_agents": ["Code Analysis Agent", "Repository Analysis Agent", "Security Analysis Agent", "Knowledge Agent"],
+                              "allowed_resources": ["*"], "read_write": {"read": True, "create": False, "update": False, "delete": False, "execute": True}},
+                sync_stats={"repositories_indexed": 3, "commits_indexed": 48, "prs_indexed": 12, "last_sync_duration_ms": 1420, "health": "HEALTHY"},
+                last_synced_at=now - timedelta(minutes=15)
+            ),
+            Connector(
+                id="conn_jira", company_id=NT, provider="jira", name="Jira",
+                category="Project Management",
+                description="Jira Software projects, epics, sprints, issues, bug tracking, and release boards.",
+                status="connected", auth_type="oauth2", mode="DEMO CONNECTOR",
+                account_name="novatech.atlassian.net", account_email="jira-service@novatech.demo",
+                scopes=["read:jira-work", "write:jira-work", "read:jira-user", "manage:jira-project"],
+                resources=["NOVA (Core Platform)", "SEC (Security & Governance)", "DEVOPS (Cloud & Infrastructure)"],
+                agent_access={"allowed_agents": ["Jira Management Agent", "Project Agent", "Security Analysis Agent", "Workflow Agent"],
+                              "allowed_resources": ["NOVA", "SEC", "DEVOPS"], "read_write": {"read": True, "create": True, "update": True, "delete": False, "execute": True}},
+                sync_stats={"projects_indexed": 3, "issues_indexed": 26, "sprints_indexed": 4, "last_sync_duration_ms": 980, "health": "HEALTHY"},
+                last_synced_at=now - timedelta(minutes=8)
+            ),
+            Connector(
+                id="conn_outlook", company_id=NT, provider="outlook", name="Microsoft Outlook",
+                category="Communication & Calendar",
+                description="Exchange mailboxes, corporate email threads, calendar events, and meeting invites.",
+                status="connected", auth_type="oauth2", mode="DEMO CONNECTOR",
+                account_name="alex.chen@novatech.demo", account_email="alex.chen@novatech.demo",
+                scopes=["Mail.Read", "Mail.ReadWrite", "Mail.Send", "Calendars.Read", "Contacts.Read"],
+                resources=["alex.chen@novatech.demo (Mailbox)", "Engineering Calendar", "Security Review Meetings"],
+                agent_access={"allowed_agents": ["Productivity Agent", "Workflow Agent", "Executive Assistant"],
+                              "allowed_resources": ["alex.chen@novatech.demo"], "read_write": {"read": True, "create": True, "update": False, "delete": False, "execute": True}},
+                sync_stats={"emails_indexed": 34, "threads_indexed": 12, "meetings_indexed": 8, "last_sync_duration_ms": 1150, "health": "HEALTHY"},
+                last_synced_at=now - timedelta(minutes=12)
+            ),
+            Connector(
+                id="conn_teams", company_id=NT, provider="teams", name="Microsoft Teams",
+                category="Collaboration & Chat",
+                description="Teams channels, chats, meeting discussions, channel announcements, and shared files.",
+                status="connected", auth_type="oauth2", mode="DEMO CONNECTOR",
+                account_name="NovaTech Solutions Tenant", account_email="teams-bot@novatech.demo",
+                scopes=["ChannelMessage.Read.All", "ChannelMessage.Send", "Team.ReadBasic.All", "Files.Read.All"],
+                resources=["NovaTech Engineering > #general", "NovaTech Engineering > #backend-platform", "InfoSec & Governance > #security-eng"],
+                agent_access={"allowed_agents": ["Workflow Agent", "Productivity Agent", "Security Analysis Agent", "Knowledge Agent"],
+                              "allowed_resources": ["#general", "#backend-platform", "#security-eng"], "read_write": {"read": True, "create": True, "update": False, "delete": False, "execute": True}},
+                sync_stats={"channels_indexed": 3, "messages_indexed": 52, "active_threads": 15, "last_sync_duration_ms": 870, "health": "HEALTHY"},
+                last_synced_at=now - timedelta(minutes=5)
+            ),
+            Connector(
+                id="conn_entra", company_id=NT, provider="entra", name="Microsoft Entra ID",
+                category="Identity & Access",
+                description="Enterprise directory, user profiles, security groups, role definitions, and conditional access.",
+                status="connected", auth_type="oauth2", mode="DEMO SSO",
+                account_name="novatech.onmicrosoft.com", account_email="admin@novatech.onmicrosoft.com",
+                scopes=["User.Read.All", "GroupMember.Read.All", "Directory.Read.All", "RoleManagement.Read.Directory"],
+                resources=["Security Engineering (Group)", "Core Backend Team (Group)", "Cloud Platform Admin (Group)", "All Employees (Org)"],
+                agent_access={"allowed_agents": ["Security Analysis Agent", "Knowledge Agent", "HR Agent", "IT Agent"],
+                              "allowed_resources": ["*"], "read_write": {"read": True, "create": False, "update": False, "delete": False, "execute": True}},
+                sync_stats={"users_mapped": 20, "groups_indexed": 5, "directory_roles": 6, "last_sync_duration_ms": 620, "health": "HEALTHY"},
+                last_synced_at=now - timedelta(minutes=20)
+            ),
+        ]
+        db.add_all(conns)
+        db.commit()
+
+    # 2. Agent Skills
+    existing_skills = db.scalars(select(AgentSkillModel)).all()
+    if not existing_skills:
+        log.info("Seeding reusable agent skills...")
+        skills = [
+            AgentSkillModel(
+                id="skill_code_analysis", name="Code Analysis", category="Development",
+                description="Understand and analyze source code from connected repositories, trace execution flow and dependencies.",
+                version="1.2.0", status="active", required_connectors=["conn_github"],
+                required_permissions=["repositories:read"],
+                tools=["search_code", "read_file_content", "trace_dependency", "explain_function"],
+                input_schema={"type": "object", "properties": {"query": {"type": "string"}, "file_path": {"type": "string"}, "symbol": {"type": "string"}}},
+                output_schema={"type": "object", "properties": {"summary": {"type": "string"}, "symbols": {"type": "array"}, "complexity": {"type": "string"}}},
+                instructions="Retrieve AST-aware code chunks. Cite files with line numbers. Never speculate about unindexed code.",
+                security_restrictions="Zero cleartext secret leakage. Withhold proprietary code if clearance is insufficient.",
+                agents_using=["Code Analysis Agent", "Repository Analysis Agent", "Security Analysis Agent"]
+            ),
+            AgentSkillModel(
+                id="skill_security_analysis", name="Security Analysis", category="Security",
+                description="Identify potential vulnerabilities, authorization flaws, secret leakage, and dependency risks.",
+                version="2.0.0", status="active", required_connectors=["conn_github", "conn_entra"],
+                required_permissions=["repositories:read", "security:read"],
+                tools=["scan_vulnerabilities", "analyze_auth_flow", "detect_insecure_config"],
+                input_schema={"type": "object", "properties": {"target": {"type": "string"}, "severity_threshold": {"type": "string"}}},
+                output_schema={"type": "object", "properties": {"findings": {"type": "array"}, "risk_score": {"type": "number"}, "remediation": {"type": "array"}}},
+                instructions="Categorize findings with severity (CRITICAL, HIGH, MEDIUM, LOW), evidence, and recommended remediation. Clearly label AI-generated vs verified findings.",
+                security_restrictions="Never execute exploit payloads. Mask discovered credentials immediately.",
+                agents_using=["Security Analysis Agent", "Engineering Manager Agent"]
+            ),
+            AgentSkillModel(
+                id="skill_repo_analysis", name="Repository Analysis", category="Repository Intelligence",
+                description="Generate a comprehensive architectural breakdown of the codebase across Frontend, Backend, APIs, Database, and CI/CD.",
+                version="1.1.0", status="active", required_connectors=["conn_github"],
+                required_permissions=["repositories:read"],
+                tools=["get_repo_architecture", "get_repo_technologies"],
+                input_schema={"type": "object", "properties": {"repo_name": {"type": "string"}}},
+                output_schema={"type": "object", "properties": {"architecture_tree": {"type": "object"}, "tech_stack": {"type": "array"}}},
+                instructions="Analyze file tree, package manifests, and endpoints. Return an enterprise architectural overview.",
+                security_restrictions="Honor repository clearance and department boundaries.",
+                agents_using=["Repository Analysis Agent", "Knowledge Agent"]
+            ),
+            AgentSkillModel(
+                id="skill_report_gen", name="Report Generation", category="Reporting",
+                description="Synthesize findings across connected systems into structured executive reports with evidence tables and recommendations.",
+                version="1.3.0", status="active", required_connectors=["conn_github", "conn_jira", "conn_teams", "conn_outlook"],
+                required_permissions=["documents:read", "analytics:read"],
+                tools=["generate_enterprise_report"],
+                input_schema={"type": "object", "properties": {"report_type": {"type": "string"}, "timeframe": {"type": "string"}, "sources": {"type": "array"}}},
+                output_schema={"type": "object", "properties": {"title": {"type": "string"}, "executive_summary": {"type": "string"}, "sections": {"type": "array"}}},
+                instructions="Include Executive Summary, Findings, Evidence Tables, Source References, and Timestamp. Maintain clear source provenance.",
+                security_restrictions="Filter withheld or restricted documents before inclusion in the report.",
+                agents_using=["Report Generation Agent", "Executive Assistant", "Security Analysis Agent"]
+            ),
+            AgentSkillModel(
+                id="skill_jira_mgmt", name="Jira Management", category="Project Management",
+                description="Search Jira issues, find sprint blockers, summarize project status, and propose issue updates or ticket creation.",
+                version="1.4.0", status="active", required_connectors=["conn_jira"],
+                required_permissions=["projects:read", "requests:create"],
+                tools=["search_jira_issues", "create_jira_issue", "update_jira_issue"],
+                input_schema={"type": "object", "properties": {"project": {"type": "string"}, "query": {"type": "string"}, "issue_data": {"type": "object"}}},
+                output_schema={"type": "object", "properties": {"issues": {"type": "array"}, "action_proposal": {"type": "object"}}},
+                instructions="Search issues and summarize blockers. NEVER create or modify tickets without human confirmation.",
+                security_restrictions="Require explicit user confirmation card before any write or update action.",
+                agents_using=["Jira Management Agent", "Project Agent", "Workflow Agent"]
+            ),
+            AgentSkillModel(
+                id="skill_doc_gen", name="Documentation Generation", category="Documentation",
+                description="Generate accurate technical documentation, API specifications, and developer onboarding guides grounded in real code.",
+                version="1.0.0", status="active", required_connectors=["conn_github"],
+                required_permissions=["repositories:read"],
+                tools=["generate_documentation", "inspect_api_contracts"],
+                input_schema={"type": "object", "properties": {"doc_type": {"type": "string"}, "service": {"type": "string"}}},
+                output_schema={"type": "object", "properties": {"markdown_content": {"type": "string"}, "citations": {"type": "array"}}},
+                instructions="Base all documentation strictly on parsed code symbols and configuration. Never invent fictitious parameters.",
+                security_restrictions="Do not expose internal IP addresses, private endpoints, or staging keys.",
+                agents_using=["Documentation Agent", "Code Analysis Agent"]
+            ),
+        ]
+        db.add_all(skills)
+        db.commit()
+
+    # 3. Connector Items (Enterprise Data)
+    existing_items = db.scalars(select(ConnectorItem).where(ConnectorItem.company_id == NT)).all()
+    if not existing_items:
+        log.info("Seeding enterprise connector items...")
+        items = [
+            # Jira Issues
+            ConnectorItem(
+                id="ci_jira_421", company_id=NT, connector_id="conn_jira", provider="jira",
+                item_type="jira_issue", external_id="NOVA-421",
+                title="JWT Session Validation and Token Expiration Vulnerability",
+                content="Identified potential session bypass in OAuth refresh token validation. Token expiration is not strictly verified on fast concurrent requests.",
+                metadata_json={"priority": "High", "status": "In Progress", "assignee": "Alex Chen", "reporter": "Security Ops", "sprint": "Sprint 44", "epic": "Auth Hardening", "components": ["auth-service", "api-gateway"]},
+                classification="INTERNAL", url="https://novatech.atlassian.net/browse/NOVA-421", author="Security Ops"
+            ),
+            ConnectorItem(
+                id="ci_jira_389", company_id=NT, connector_id="conn_jira", provider="jira",
+                item_type="jira_issue", external_id="NOVA-389",
+                title="API Gateway Rate-Limiter Timeout Under High Load",
+                content="Rate limiting middleware occasionally returns 504 Gateway Timeout during sudden request spikes over 2,000 req/sec.",
+                metadata_json={"priority": "Medium", "status": "Backlog", "assignee": "Sarah Connor", "sprint": "Sprint 45", "epic": "Performance", "components": ["api-gateway"]},
+                classification="INTERNAL", url="https://novatech.atlassian.net/browse/NOVA-389", author="Sarah Connor"
+            ),
+            ConnectorItem(
+                id="ci_jira_412", company_id=NT, connector_id="conn_jira", provider="jira",
+                item_type="jira_issue", external_id="NOVA-412",
+                title="Database Connection Pool Exhaustion in Worker Services",
+                content="Worker background tasks do not release SQLAlchemy connections on async task cancellation, causing connection pool starvation.",
+                metadata_json={"priority": "Critical", "status": "Blocker", "assignee": "Alex Chen", "sprint": "Sprint 44", "epic": "Platform Reliability", "components": ["database", "workers"]},
+                classification="INTERNAL", url="https://novatech.atlassian.net/browse/NOVA-412", author="DevOps Team"
+            ),
+            # Teams Messages
+            ConnectorItem(
+                id="ci_teams_01", company_id=NT, connector_id="conn_teams", provider="teams",
+                item_type="teams_message", external_id="msg_sec_101",
+                title="Token Validation Vulnerability Mitigation in #security-eng",
+                content="Alex Chen: I investigated the session refresh issue from NOVA-421. The fix adds atomic redis token blacklisting and strict JWT expiry checks. Pull request #142 is opened on novatech/enterprise-agent.",
+                metadata_json={"channel": "#security-eng", "team": "InfoSec & Governance", "thread_id": "thr_001", "replies_count": 4},
+                classification="INTERNAL", url="https://teams.microsoft.com/l/message/19:sec-eng/101", author="Alex Chen"
+            ),
+            ConnectorItem(
+                id="ci_teams_02", company_id=NT, connector_id="conn_teams", provider="teams",
+                item_type="teams_message", external_id="msg_ops_202",
+                title="Payment Service Latency Spike Resolved in #backend-platform",
+                content="Sarah Connor: We traced the payment service slowdown to connection pool exhaustion (NOVA-412). Max pool size has been bumped to 50 connections on staging; memory usage is stable.",
+                metadata_json={"channel": "#backend-platform", "team": "NovaTech Engineering", "thread_id": "thr_002", "replies_count": 6},
+                classification="INTERNAL", url="https://teams.microsoft.com/l/message/19:backend/202", author="Sarah Connor"
+            ),
+            # Outlook Emails & Meetings
+            ConnectorItem(
+                id="ci_mail_01", company_id=NT, connector_id="conn_outlook", provider="outlook",
+                item_type="email", external_id="mail_ciso_301",
+                title="Urgent: Q3 Enterprise Security Review & Audit Action Items",
+                content="From: ciso@novatech.demo\nTo: engineering-leads@novatech.demo\nSubject: Urgent: Q3 Enterprise Security Review & Audit Action Items\n\nPlease ensure all high-severity items from the security assessment are addressed prior to Friday's audit. Particular focus: JWT token rotation, GitHub secret scanning, and Entra ID conditional access policy enforcement.",
+                metadata_json={"sender": "ciso@novatech.demo", "recipients": ["engineering-leads@novatech.demo"], "has_attachments": True, "thread_id": "em_thr_01"},
+                classification="INTERNAL", url="https://outlook.office.com/mail/id/301", author="Chief Information Security Officer"
+            ),
+            ConnectorItem(
+                id="ci_meet_01", company_id=NT, connector_id="conn_outlook", provider="outlook",
+                item_type="meeting", external_id="meet_triage_401",
+                title="Sprint 44 Blocker Triage & Vulnerability Review",
+                content="Weekly engineering review to triage critical bugs, discuss NOVA-421 and NOVA-412 resolution, and review security scanner findings.",
+                metadata_json={"starts_at": (now + timedelta(hours=2)).isoformat(), "duration_minutes": 45, "organizer": "Alex Chen", "location": "Microsoft Teams Meeting"},
+                classification="INTERNAL", url="https://outlook.office.com/calendar/item/401", author="Alex Chen"
+            ),
+            # Entra ID Directory Group
+            ConnectorItem(
+                id="ci_entra_01", company_id=NT, connector_id="conn_entra", provider="entra",
+                item_type="entra_group", external_id="grp_sec_eng",
+                title="Security Engineering Directory Group",
+                content="Enterprise security group for InfoSec engineers and DevSecOps staff with permissions to manage security alerts and review classified audit logs.",
+                metadata_json={"group_type": "Security", "members_count": 8, "email": "sec-eng@novatech.demo", "roles": ["Security Administrator", "Auditor"]},
+                classification="INTERNAL", url="https://entra.microsoft.com/#view/group/sec-eng", author="Entra ID Sync"
+            ),
+        ]
+        db.add_all(items)
+        db.commit()
+        log.info("Enterprise connectors & skills seeded successfully.")
+
 

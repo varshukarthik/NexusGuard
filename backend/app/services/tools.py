@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session as DBSession
 from ..core.rbac import (LEVELS, TOOL_ALIASES, TOOL_POLICIES, allowed_levels, check_access, check_record, check_tool,
                          is_guest)
 from ..core.security import Principal
-from ..db.models import (AIAction, ApprovalRequest, Department, Document, DocumentChunk, EmailOutbox, ITAsset,
+from ..db.models import (AIAction, ApprovalRequest, ConnectorItem, Department, Document, DocumentChunk, EmailOutbox, ITAsset,
                          ITTicket, LeaveBalance, LeaveRequest, Meeting, MeetingAttendee, PerformanceReview,
                          Compensation, Project, ProjectMember, PurchaseOrder, ServiceRequest, SoftwareItem, Task,
                          ToolExecution, User)
@@ -167,6 +167,26 @@ TOOL_SCHEMAS = {
                             ["request_type", "document_id", "justification"]),
     "delete_document": _fn("delete_document", "Archive (delete) a document. Requires elevated permission and "
                            "confirmation.", {"document_id": _S}, ["document_id"]),
+    # Enterprise Connectors & Skills Tools
+    "search_jira_issues": _fn("search_jira_issues", "Search Jira issues, bugs, and backlog items in connected Jira projects. Returns status, priority, and assignees.",
+                              {"query": _S, "project": {"type": "string", "description": "project key e.g. NOVA"}, "status": {"type": "string"}}, ["query"]),
+    "create_jira_issue": _fn("create_jira_issue", "Propose creating a new Jira ticket (requires human confirmation).",
+                             {"title": _S, "description": _S, "project": {"type": "string"}, "priority": {"type": "string", "enum": ["Critical", "High", "Medium", "Low"]}},
+                             ["title", "description"]),
+    "search_teams_messages": _fn("search_teams_messages", "Search conversations and messages in connected Microsoft Teams channels.",
+                                 {"query": _S, "channel": {"type": "string"}}, ["query"]),
+    "post_teams_message": _fn("post_teams_message", "Post a message to a Microsoft Teams channel (requires human confirmation).",
+                              {"channel": _S, "message": _S}, ["channel", "message"]),
+    "search_emails": _fn("search_emails", "Search Outlook emails, threads, and communications.",
+                         {"query": _S, "sender": {"type": "string"}}, ["query"]),
+    "lookup_entra_identity": _fn("lookup_entra_identity", "Look up enterprise identity, directory groups, and roles in Microsoft Entra ID.",
+                                 {"query": _S}, ["query"]),
+    "scan_vulnerabilities": _fn("scan_vulnerabilities", "Run Security Analysis skill to detect vulnerabilities, authorization flaws, and secrets in the codebase.",
+                                {"target": _S}, ["target"]),
+    "get_repo_architecture": _fn("get_repo_architecture", "Run Repository Analysis skill to get architecture overview, tech stack, and components of a repository.",
+                                 {"repo_name": _S}, ["repo_name"]),
+    "generate_enterprise_report": _fn("generate_enterprise_report", "Run Report Generation skill to synthesize findings across systems into an executive report.",
+                                      {"report_type": _S}, ["report_type"]),
 }
 
 TOOL_AGENT = {
@@ -179,6 +199,16 @@ TOOL_AGENT = {
     "get_project": "Project Agent", "get_my_projects": "Project Agent", "summarize_document": "Document Agent",
     "compare_documents": "Document Agent", "latest_updates": "Document Agent", "analytics_query": "Analytics Agent",
     "get_pending_tasks": "Productivity Agent", "get_department": "Knowledge Agent",
+    # Enterprise Connectors & Skills mappings
+    "search_jira_issues": "Jira Management Agent",
+    "create_jira_issue": "Jira Management Agent",
+    "search_teams_messages": "Security Analysis Agent",
+    "post_teams_message": "Workflow Agent",
+    "search_emails": "Productivity Agent",
+    "lookup_entra_identity": "Security Analysis Agent",
+    "scan_vulnerabilities": "Security Analysis Agent",
+    "get_repo_architecture": "Repository Analysis Agent",
+    "generate_enterprise_report": "Report Generation Agent",
 }
 
 
@@ -961,6 +991,113 @@ def t_analytics_query(ctx: ToolContext, dataset: str, metric: str = "count", gro
     return run_query(ctx, dataset, metric, group_by, status, department)
 
 
+# ---- Enterprise Connectors & Skills Tools ----------------------------------------------------
+
+def t_search_jira_issues(ctx: ToolContext, query: str = "", project: str = "NOVA", status: str = "") -> ToolOutcome:
+    from .connectors.permission_engine import check_connector_access
+    from .connectors.providers.jira_provider import JiraProvider
+    dec = check_connector_access(ctx.db, ctx.principal, "conn_jira", "READ", project, "Jira Management Agent")
+    if not dec.allowed:
+        return _denied(ctx, "search_jira_issues", dec.reason, resource=f"jira:{project}", classification=dec.classification)
+    issues = JiraProvider.search_issues(ctx.db, ctx.principal.company_id, query=query, project=project, status=status)
+    for iss in issues[:10]:
+        ctx.cite("jira", iss["key"], f"{iss['key']}: {iss['title']}", "INTERNAL", None, f"{iss['priority']} · {iss['status']}")
+    view = "Jira issues:\n" + "\n".join(f"- [{i['key']}] {i['title']} ({i['status']} · Priority: {i['priority']} · Assignee: {i['assignee']})" for i in issues) if issues else "No Jira issues found."
+    return ToolOutcome("search_jira_issues", "ok", f"{len(issues)} Jira issue(s)", view, {"issues": issues})
+
+
+def t_create_jira_issue(ctx: ToolContext, title: str, description: str, project: str = "NOVA", priority: str = "High") -> ToolOutcome:
+    from .connectors.permission_engine import check_connector_access
+    from .connectors.providers.jira_provider import JiraProvider
+    dec = check_connector_access(ctx.db, ctx.principal, "conn_jira", "CREATE", project, "Jira Management Agent")
+    if not dec.allowed:
+        return _denied(ctx, "create_jira_issue", dec.reason, resource=f"jira:{project}", classification=dec.classification)
+    args = {"title": title[:160], "description": description[:2000], "project": project, "priority": priority}
+    preview = JiraProvider.prepare_create_issue_proposal(project, args["title"], args["description"], priority)
+    act = _pending(ctx, "create_jira_issue", args, preview, f"Create Jira issue in {project}")
+    return ToolOutcome("create_jira_issue", "pending_confirmation", f"Prepared Jira ticket: {args['title']}",
+                       f"PENDING_USER_CONFIRMATION (action {act.id}) for Jira ticket '{args['title']}' in {project}. Tell the user to review and confirm the action card.", args, act)
+
+
+def t_search_teams_messages(ctx: ToolContext, query: str = "", channel: str = "#security-eng") -> ToolOutcome:
+    from .connectors.permission_engine import check_connector_access
+    from .connectors.providers.teams_provider import TeamsProvider
+    dec = check_connector_access(ctx.db, ctx.principal, "conn_teams", "READ", channel, "Security Analysis Agent")
+    if not dec.allowed:
+        return _denied(ctx, "search_teams_messages", dec.reason, resource=f"teams:{channel}", classification=dec.classification)
+    msgs = TeamsProvider.search_messages(ctx.db, ctx.principal.company_id, query=query, channel=channel)
+    for m in msgs[:6]:
+        ctx.cite("teams", m["id"], f"{m['channel']}: {m['author']}", "INTERNAL", None, m["message"][:80])
+    view = "Teams discussions:\n" + "\n".join(f"- [{m['channel']}] {m['author']}: {m['message']}" for m in msgs) if msgs else "No Teams messages found."
+    return ToolOutcome("search_teams_messages", "ok", f"{len(msgs)} Teams message(s)", view, {"messages": msgs})
+
+
+def t_post_teams_message(ctx: ToolContext, channel: str, message: str) -> ToolOutcome:
+    from .connectors.permission_engine import check_connector_access
+    from .connectors.providers.teams_provider import TeamsProvider
+    dec = check_connector_access(ctx.db, ctx.principal, "conn_teams", "CREATE", channel)
+    if not dec.allowed:
+        return _denied(ctx, "post_teams_message", dec.reason, resource=f"teams:{channel}", classification=dec.classification)
+    args = {"channel": channel, "message": message[:1000]}
+    preview = TeamsProvider.prepare_post_message_proposal(channel, args["message"])
+    act = _pending(ctx, "post_teams_message", args, preview, f"Post message to {channel}")
+    return ToolOutcome("post_teams_message", "pending_confirmation", f"Prepared message for {channel}",
+                       f"PENDING_USER_CONFIRMATION (action {act.id}) for Teams post to {channel}.", args, act)
+
+
+def t_search_emails(ctx: ToolContext, query: str = "", sender: str = "") -> ToolOutcome:
+    from .connectors.permission_engine import check_connector_access
+    from .connectors.providers.outlook_provider import OutlookProvider
+    dec = check_connector_access(ctx.db, ctx.principal, "conn_outlook", "READ", agent_name="Productivity Agent")
+    if not dec.allowed:
+        return _denied(ctx, "search_emails", dec.reason, resource="outlook:mailbox", classification=dec.classification)
+    emails = OutlookProvider.search_emails(ctx.db, ctx.principal.company_id, query=query, sender=sender)
+    for e in emails[:6]:
+        ctx.cite("email", e["id"], f"Email: {e['subject']}", "INTERNAL", None, f"From: {e['sender']}")
+    view = "Outlook emails:\n" + "\n".join(f"- [{e['sender']}] {e['subject']}: {e['body_preview']}" for e in emails) if emails else "No emails found."
+    return ToolOutcome("search_emails", "ok", f"{len(emails)} email(s)", view, {"emails": emails})
+
+
+def t_lookup_entra_identity(ctx: ToolContext, query: str = "me") -> ToolOutcome:
+    from .connectors.permission_engine import check_connector_access
+    from .connectors.providers.entra_provider import EntraProvider
+    dec = check_connector_access(ctx.db, ctx.principal, "conn_entra", "READ", agent_name="Security Analysis Agent")
+    if not dec.allowed:
+        return _denied(ctx, "lookup_entra_identity", dec.reason, resource="entra:directory", classification=dec.classification)
+    target = ctx.principal.email if query in ("me", "myself", "self") else query
+    ident = EntraProvider.lookup_identity(ctx.db, ctx.principal.company_id, target)
+    if not ident:
+        return ToolOutcome("lookup_entra_identity", "not_found", "Identity not found", "No matching Entra ID user found.")
+    view = f"Entra ID Profile for {ident['displayName']} ({ident['userPrincipalName']}):\n- Member of: {', '.join(ident['memberOf'])}\n- MFA: {ident['mfaStatus']}\n- Conditional Access: {ident['conditionalAccess']}"
+    return ToolOutcome("lookup_entra_identity", "ok", f"Entra profile: {ident['displayName']}", view, ident)
+
+
+def t_scan_vulnerabilities(ctx: ToolContext, target: str = "authentication service") -> ToolOutcome:
+    from .skills.skills_registry import SkillsRegistry
+    res = SkillsRegistry.run_security_analysis(ctx.db, ctx.principal, {"target": target})
+    view = f"Security Vulnerability Scan for {target}:\n- Risk Score: {res['risk_score']}/10\n" + "\n".join(
+        f"- [{f['severity']}] {f['title']} ({f['cwe']}) in {f['affected_file']}:{f['line']} -> {f['recommended_remediation']}" for f in res["findings"]
+    )
+    return ToolOutcome("scan_vulnerabilities", "ok", f"{len(res['findings'])} vulnerability finding(s)", view, res)
+
+
+def t_get_repo_architecture(ctx: ToolContext, repo_name: str = "novatech/enterprise-agent") -> ToolOutcome:
+    from .skills.skills_registry import SkillsRegistry
+    res = SkillsRegistry.run_repo_analysis(ctx.db, ctx.principal, {"repo_name": repo_name})
+    arch = res["architecture"]
+    view = f"Repository Architecture Overview for {repo_name}:\n- Frontend: {arch['Frontend']['framework']}\n- Backend: {arch['Backend']['framework']}\n- Database: {arch['Database']['orm']}\n- CI/CD: {arch['CI/CD & Testing']['ci_pipeline']}"
+    return ToolOutcome("get_repo_architecture", "ok", f"Architecture of {repo_name}", view, res)
+
+
+def t_generate_enterprise_report(ctx: ToolContext, report_type: str = "Security Assessment & Engineering Status Report") -> ToolOutcome:
+    from .skills.skills_registry import SkillsRegistry
+    res = SkillsRegistry.run_report_generation(ctx.db, ctx.principal, {"report_type": report_type})
+    view = f"# {res['report_title']}\n\n**Executive Summary:**\n{res['executive_summary']}\n\n**Evidence:**\n" + "\n".join(
+        f"- [{row['Source']}] {row['Reference']} — Status: {row['Status']} (Owner: {row['Owner']})" for row in res["evidence_table"]
+    )
+    return ToolOutcome("generate_enterprise_report", "ok", f"Generated {report_type}", view, res)
+
+
 IMPL = {
     "search_knowledge": t_search_knowledge, "search_documents": t_search_documents,
     "search_policies": t_search_policies, "search_repositories": t_search_repositories,
@@ -972,6 +1109,12 @@ IMPL = {
     "get_leave_balance": t_get_leave_balance, "create_leave_request": t_create_leave_request,
     "create_it_ticket": t_create_it_ticket, "create_request": t_create_request, "draft_email": t_draft_email,
     "send_email": t_send_email, "request_approval": t_request_approval, "delete_document": t_delete_document,
+    # Connector & Skill tools
+    "search_jira_issues": t_search_jira_issues, "create_jira_issue": t_create_jira_issue,
+    "search_teams_messages": t_search_teams_messages, "post_teams_message": t_post_teams_message,
+    "search_emails": t_search_emails, "lookup_entra_identity": t_lookup_entra_identity,
+    "scan_vulnerabilities": t_scan_vulnerabilities, "get_repo_architecture": t_get_repo_architecture,
+    "generate_enterprise_report": t_generate_enterprise_report,
 }
 
 
@@ -1089,4 +1232,31 @@ def execute_action(db: DBSession, p: Principal, act: AIAction, overrides: dict |
         doc.status = "archived"
         doc.updated_at = datetime.now(timezone.utc)
         return {"reference": doc.id, "message": f"{doc.title} archived and removed from search."}
+    if act.tool == "create_jira_issue":
+        item_id = _next_id("JIRA", db, ConnectorItem)
+        project = a.get("project", "NOVA")
+        ci = ConnectorItem(
+            id=item_id, company_id=p.company_id, connector_id="conn_jira", provider="jira",
+            item_type="jira_issue", external_id=f"{project}-{random.randint(430, 990)}",
+            title=a["title"], content=a["description"],
+            metadata_json={"priority": a.get("priority", "High"), "status": "Open", "assignee": p.full_name, "sprint": "Sprint 44"},
+            classification="INTERNAL", url=f"https://novatech.atlassian.net/browse/{project}",
+            author=p.full_name
+        )
+        db.add(ci)
+        db.flush()
+        return {"reference": ci.external_id, "message": f"Jira ticket {ci.external_id} created successfully in project {project} and assigned to {p.full_name}."}
+    if act.tool == "post_teams_message":
+        msg_id = _next_id("TEAMS", db, ConnectorItem)
+        ci = ConnectorItem(
+            id=msg_id, company_id=p.company_id, connector_id="conn_teams", provider="teams",
+            item_type="teams_message", external_id=f"msg_{random.randint(500, 999)}",
+            title=f"Message to {a['channel']}", content=f"{p.full_name}: {a['message']}",
+            metadata_json={"channel": a["channel"], "author": p.full_name},
+            classification="INTERNAL", url=f"https://teams.microsoft.com/l/message/{a['channel']}",
+            author=p.full_name
+        )
+        db.add(ci)
+        db.flush()
+        return {"reference": a["channel"], "message": f"Message successfully posted to Teams channel {a['channel']}."}
     raise ValueError("Unsupported action")

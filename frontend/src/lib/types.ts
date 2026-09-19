@@ -265,6 +265,117 @@ export interface RepositoryItem {
   access_rule: string;
 }
 
+export interface Connector {
+  id: string;
+  company_id: string;
+  provider: "github" | "jira" | "outlook" | "teams" | "entra";
+  name: string;
+  category: string;
+  description: string;
+  status: "not_connected" | "connecting" | "connected" | "syncing" | "error" | "token_expired";
+  auth_type: string;
+  mode: "DEMO CONNECTOR" | "PRODUCTION";
+  account_name: string;
+  account_email: string;
+  scopes: string[];
+  resources: string[];
+  agent_access: Record<string, string>;
+  sync_stats: Record<string, any>;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConnectorItem {
+  id: string;
+  company_id: string;
+  connector_id: string;
+  provider: string;
+  item_type: string;
+  external_id: string;
+  title: string;
+  content: string;
+  metadata_json: Record<string, any>;
+  classification: Classification;
+  url: string;
+  author: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentSkill {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  version: string;
+  status: "active" | "deprecated" | "draft" | "disabled";
+  required_connectors: string[];
+  required_permissions: string[];
+  tools: string[];
+  input_schema: Record<string, any>;
+  output_schema: Record<string, any>;
+  instructions: string;
+  security_restrictions: string;
+  agents_using: string[];
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface SkillExecutionStep {
+  step: string;
+  label: string;
+  connector: string;
+  status: "done" | "active" | "pending" | "pending_confirmation";
+  detail: string;
+}
+
+export interface ComposedWorkflowResult {
+  workflow: string;
+  target: string;
+  status: "awaiting_confirmation" | "completed" | "failed";
+  pipeline: Array<{ id: string; label: string; status: string }>;
+  timeline: SkillExecutionStep[];
+  findings: Array<{
+    id: string;
+    severity: string;
+    category: string;
+    title: string;
+    description: string;
+    affected_components: string[];
+    remediation_status: string;
+    evidence: string;
+  }>;
+  report: {
+    title: string;
+    executive_summary: string;
+    findings_count: number;
+    evidence_matrix: Array<{ system: string; record: string; classification: string; status: string }>;
+    recommendations: string[];
+    sources_used: string[];
+  };
+  jira_issues: Array<{
+    key: string;
+    title: string;
+    summary: string;
+    status: string;
+    priority: string;
+    assignee: string;
+    sprint: string;
+    url: string;
+  }>;
+  action_proposal: {
+    title: string;
+    summary: string;
+    fields: Array<[string, string]>;
+    body: string;
+    warning: string;
+    editable: string[];
+  };
+}
+
 export type Page =
-  | "chat" | "tasks" | "approvals" | "documents" | "security" | "audit" | "admin" | "lab" | "settings" | "work";
+  | "chat" | "tasks" | "approvals" | "documents" | "connectors" | "security" | "audit" | "admin" | "lab" | "settings" | "work";
+
 

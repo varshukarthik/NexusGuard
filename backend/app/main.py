@@ -16,8 +16,8 @@ from .config import get_settings
 from .core.errors import AppError
 from .core.middleware import EdgeMiddleware
 from .db import session as dbsession
-from .db.seed import ensure_index, seed
-from .routers import agentic, auth, contact, documents, governance, policy_lab, repositories, workspace
+from .db.seed import ensure_connectors_and_skills, ensure_index, ensure_repositories, seed
+from .routers import agentic, auth, connectors, contact, documents, governance, policy_lab, repositories, skills, workspace
 from .services import llm
 from .services.embeddings import embedder
 
@@ -32,6 +32,8 @@ async def lifespan(app: FastAPI):
     with dbsession.SessionLocal() as db:
         seed(db)
         ensure_index(db)
+        ensure_repositories(db)
+        ensure_connectors_and_skills(db)
     log.info("AI engine: %s · embeddings: %s", "openai:" + settings.openai_model if llm.enabled() else "offline",
              embedder.model_id)
     try:  # warm the hybrid search index so the first question is fast
@@ -81,7 +83,7 @@ async def unhandled(request: Request, exc: Exception):
                         status_code=500)
 
 
-for r in (auth.router, workspace.router, documents.router, repositories.router, governance.router, policy_lab.router, agentic.router, contact.router):
+for r in (auth.router, workspace.router, documents.router, repositories.router, connectors.router, skills.router, governance.router, policy_lab.router, agentic.router, contact.router):
     app.include_router(r, prefix="/api")
 
 

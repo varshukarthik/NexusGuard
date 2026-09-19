@@ -6,7 +6,8 @@ import { Avatar, cx } from "../lib/ui";
 
 const TITLES: Record<Page, string> = {
   chat: "AI Assistant", work: "Work Mode", tasks: "My Work", approvals: "Approvals", documents: "Knowledge Base",
-  security: "Security Center", audit: "Audit Logs", admin: "Admin Dashboard", lab: "Policy Lab", settings: "Settings",
+  connectors: "Connectors & Skills", security: "Security Center", audit: "Audit Logs", admin: "Admin Dashboard",
+  lab: "Policy Lab", settings: "Settings",
 };
 
 export default function Topbar({ page, panel, togglePanel, onSignOut, onMenu }:

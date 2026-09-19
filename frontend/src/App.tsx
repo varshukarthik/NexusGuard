@@ -22,12 +22,13 @@ const PolicyLab = lazy(() => import("./pages/PolicyLab"));
 const SecurityCenter = lazy(() => import("./pages/SecurityCenter"));
 const Settings = lazy(() => import("./pages/Settings"));
 const WorkMode = lazy(() => import("./pages/WorkMode"));
+const Connectors = lazy(() => import("./pages/Connectors"));
 
 /** Pages a principal may open. The server enforces the same rules — this only avoids dead ends in the UI. */
 export function allowedPages(me: Me): Page[] {
   if (me.is_guest) return ["chat", "documents"];
-  const pages: Page[] = ["chat", "work", "tasks", "approvals", "documents", "security", "audit", "lab", "settings"];
-  if (me.permissions.includes("admin:dashboard")) pages.splice(7, 0, "admin");
+  const pages: Page[] = ["chat", "work", "tasks", "approvals", "documents", "connectors", "security", "audit", "lab", "settings"];
+  if (me.permissions.includes("admin:dashboard")) pages.splice(8, 0, "admin");
   return pages;
 }
 
@@ -123,6 +124,7 @@ export default function App() {
               {current === "tasks" && <Tasks />}
               {current === "approvals" && <Approvals />}
               {current === "documents" && <Documents />}
+              {current === "connectors" && <Connectors />}
               {current === "security" && <SecurityCenter />}
               {current === "audit" && <AuditLogs />}
               {current === "admin" && <Admin />}

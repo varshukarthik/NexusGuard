@@ -278,6 +278,67 @@ class RepositoryChunk(Base):
     embedding_model: Mapped[str] = mapped_column(String(80), default="")
 
 
+class Connector(Base):
+    __tablename__ = "connectors"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("conn_"))
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(30), index=True)  # github, jira, outlook, teams, entra
+    name: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(80), default="Enterprise System")
+    description: Mapped[str] = mapped_column(String(400), default="")
+    status: Mapped[str] = mapped_column(String(30), default="not_connected", index=True)  # not_connected, connecting, connected, syncing, error, token_expired
+    auth_type: Mapped[str] = mapped_column(String(30), default="oauth2")
+    mode: Mapped[str] = mapped_column(String(30), default="DEMO CONNECTOR")  # DEMO CONNECTOR, PRODUCTION
+    account_name: Mapped[str] = mapped_column(String(160), default="")
+    account_email: Mapped[str] = mapped_column(String(200), default="")
+    scopes: Mapped[list] = mapped_column(JSON, default=list)
+    resources: Mapped[list] = mapped_column(JSON, default=list)
+    agent_access: Mapped[dict] = mapped_column(JSON, default=dict)
+    sync_stats: Mapped[dict] = mapped_column(JSON, default=dict)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ConnectorItem(Base):
+    __tablename__ = "connector_items"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("ci_"))
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id"), index=True)
+    connector_id: Mapped[str] = mapped_column(ForeignKey("connectors.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(30), index=True)
+    item_type: Mapped[str] = mapped_column(String(40), index=True)  # jira_issue, email, meeting, teams_message, github_pr, github_commit, entra_group
+    external_id: Mapped[str] = mapped_column(String(120), index=True)
+    title: Mapped[str] = mapped_column(String(300))
+    content: Mapped[str] = mapped_column(Text)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    classification: Mapped[str] = mapped_column(String(20), default="INTERNAL", index=True)
+    url: Mapped[str] = mapped_column(String(400), default="")
+    author: Mapped[str] = mapped_column(String(160), default="")
+    status: Mapped[str] = mapped_column(String(40), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AgentSkillModel(Base):
+    __tablename__ = "agent_skills"
+    id: Mapped[str] = mapped_column(String(60), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(String(400), default="")
+    version: Mapped[str] = mapped_column(String(20), default="1.0.0")
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    required_connectors: Mapped[list] = mapped_column(JSON, default=list)
+    required_permissions: Mapped[list] = mapped_column(JSON, default=list)
+    tools: Mapped[list] = mapped_column(JSON, default=list)
+    input_schema: Mapped[dict] = mapped_column(JSON, default=dict)
+    output_schema: Mapped[dict] = mapped_column(JSON, default=dict)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    security_restrictions: Mapped[str] = mapped_column(Text, default="")
+    agents_using: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Conversation(Base):
     __tablename__ = "conversations"
     id: Mapped[str] = mapped_column(String(40), primary_key=True, default=lambda: new_id("conv_"))
