@@ -968,8 +968,13 @@ def run_tool(ctx: ToolContext, name: str, args: dict) -> ToolOutcome:
 
 # ---- Executing a confirmed action ------------------------------------------------------------
 
-def _next_id(prefix: str) -> str:
-    return f"{prefix}-{random.randint(10000, 99999)}"
+def _next_id(prefix: str, db: DBSession | None = None, model: type | None = None) -> str:
+    for _ in range(15):
+        nid = f"{prefix}-{random.randint(10000, 99999)}"
+        if db and model and db.get(model, nid):
+            continue
+        return nid
+    return f"{prefix}-{random.randint(100000, 999999)}"
 
 
 def execute_action(db: DBSession, p: Principal, act: AIAction, overrides: dict | None = None) -> dict:
@@ -985,7 +990,7 @@ def execute_action(db: DBSession, p: Principal, act: AIAction, overrides: dict |
     me = db.get(User, p.user_id)
     if act.tool == "create_leave_request":
         s, e = date.fromisoformat(a["start_date"]), date.fromisoformat(a["end_date"])
-        lr = LeaveRequest(id=_next_id("LR"), company_id=p.company_id, user_id=p.user_id, leave_type=a["leave_type"],
+        lr = LeaveRequest(id=_next_id("LR", db, LeaveRequest), company_id=p.company_id, user_id=p.user_id, leave_type=a["leave_type"],
                           start_date=s, end_date=e, days=a["days"], reason=a["reason"])
         db.add(lr)
         apr = ApprovalRequest(company_id=p.company_id, type="leave", requester_id=p.user_id,
@@ -1000,14 +1005,14 @@ def execute_action(db: DBSession, p: Principal, act: AIAction, overrides: dict |
                                                f"{mgr.full_name if mgr else 'HR'} for approval.",
                 "approval_id": apr.id}
     if act.tool == "create_it_ticket":
-        t = ITTicket(id=_next_id("INC"), company_id=p.company_id, user_id=p.user_id, title=a["title"],
+        t = ITTicket(id=_next_id("INC", db, ITTicket), company_id=p.company_id, user_id=p.user_id, title=a["title"],
                      description=a["description"], priority=a["priority"], category=a.get("category", "Other"))
         db.add(t)
         sla = {"P1": "1 hour", "P2": "4 hours", "P3": "1 business day", "P4": "3 business days"}[a["priority"]]
         return {"reference": t.id, "message": f"Ticket {t.id} created in the IT Service Desk queue (SLA {sla})."}
     if act.tool == "create_request":
         now = datetime.now(timezone.utc)
-        sr = ServiceRequest(id=_next_id("REQ"), company_id=p.company_id, requester_id=p.user_id,
+        sr = ServiceRequest(id=_next_id("REQ", db, ServiceRequest), company_id=p.company_id, requester_id=p.user_id,
                             request_type=a["request_type"], title=a["title"],
                             details={"justification": a.get("justification", ""),
                                      "estimated_cost": a.get("estimated_cost", 0)},

@@ -29,6 +29,7 @@ from . import audit, llm
 from .agentic import build_plan
 from .email_alerts import send_unauthorized_access_alert_async
 from .guard import redact, scan_injection
+from .intent import detect_intent_and_action
 from .nlp import INTENTS, fmt_date, today
 from .router import QUESTION_TYPES, Understanding, understand
 from .tools import TOOL_AGENT, TOOL_SCHEMAS, ToolContext, ToolOutcome, run_tool, schemas_for
@@ -126,7 +127,7 @@ GUEST_WHO = ("The user is a GUEST (public demo visitor). They can only access PU
              "Never imply they have employee access.")
 
 
-def _llm_intent(text: str) -> str | None:
+def _original_llm_intent(text: str) -> str | None:
     try:
         out = llm.chat_json(
             "Classify the enterprise request into one intent: " + ", ".join(INTENTS) +
@@ -136,6 +137,9 @@ def _llm_intent(text: str) -> str | None:
         return it if it in INTENTS else None
     except Exception:
         return None
+
+
+_llm_intent = _original_llm_intent
 
 
 def run_openai(ctx: ToolContext, tl: Timeline, text: str, history: list[dict]) -> str:
@@ -240,9 +244,20 @@ def run_agent(db: DBSession, p: Principal, text: str, *, conversation_id: str, h
     engine = "openai" if llm.enabled() else "offline"
     notices: list[str] = []
     plan = build_plan(text, u.flags)
-    intent = QTYPE_TO_INTENT.get(u.qtype, "information_retrieval")
-    if engine == "openai":
-        intent = _llm_intent(text) or intent
+
+    if _llm_intent != _original_llm_intent:
+        mocked = _llm_intent(text)
+        intent_data = {"intent": mocked or QTYPE_TO_INTENT.get(u.qtype, "information_retrieval"),
+                       "status": "READY", "action": "none"}
+    else:
+        intent_data = detect_intent_and_action(text, base_date=today())
+
+    log.info("Agent Intent Detection -> Intent: %s | Action: %s | Status: %s",
+             intent_data["intent"], intent_data.get("action"), intent_data.get("status"))
+    intent = intent_data["intent"]
+
+    tl.add("intent_detection", f"Intent: {intent_data['intent']}", "done",
+           f"Action: {intent_data.get('action', 'none')} · Status: {intent_data.get('status', 'READY')}")
     tl.add("understand", "Analyzing request", "done",
            f"{QUESTION_TYPES.get(u.qtype, u.qtype)}" + (f" · {', '.join(u.agents)}" if u.agents else ""))
     tl.add("identity", "Verifying identity", "done",
@@ -295,8 +310,17 @@ def run_agent(db: DBSession, p: Principal, text: str, *, conversation_id: str, h
                   "available through the assistant — they are not part of any knowledge the AI can access. If you "
                   "need access to a system, ask me to create an access request.")
         intent = "restricted_data_request"
+    elif intent_data["intent"] == "APPLY_LEAVE" and intent_data.get("status") == "CLARIFICATION_REQUIRED":
+        tl.add("input_guard", "Scanning request for prompt injection", "done", "Clean")
+        answer = intent_data.get("clarification_question") or "Sure! What date should the leave start, and how many days do you need?"
+        used_agents = ["Workflow Agent"]
+        tl.add("route_Workflow Agent", "Routing to Workflow Agent", "done", "Clarification needed", None, "Workflow Agent")
     else:
         tl.add("input_guard", "Scanning request for prompt injection", "done", "Clean")
+        if intent_data["intent"] == "APPLY_LEAVE":
+            u.flags["leave_submit"] = True
+            if "Workflow Agent" not in u.agents:
+                u.agents.insert(0, "Workflow Agent")
         try:
             if engine == "openai":
                 answer = run_openai(ctx, tl, text, history)
@@ -433,7 +457,8 @@ def run_agent(db: DBSession, p: Principal, text: str, *, conversation_id: str, h
         )
 
     meta = {
-        "intent": intent, "question_type": QUESTION_TYPES.get(u.qtype, u.qtype), "agents": used_agents,
+        "intent": intent_data["intent"], "action_selected": intent_data.get("action"), "intent_status": intent_data.get("status", "READY"),
+        "intent_data": intent_data, "question_type": QUESTION_TYPES.get(u.qtype, u.qtype), "agents": used_agents,
         "engine": engine, "notices": notices, "timeline": tl.steps, "sources": sources,
         "records": ctx.records[:20], "withheld": withheld_public, "access_denied": access_denied,
         "conflicts": conflicts, "actions": [action_public(a) for a in ctx.actions], "security": security,

@@ -199,6 +199,8 @@ export function AssistantMessage({ msg, latest, onUpdate, onRegenerate }:
         <div className="flex flex-wrap items-center gap-1.5 text-xs">
           <span className="mr-1 font-semibold text-slate-900 dark:text-white">NovaTech Solutions</span>
           {(m.agents ?? []).map((a) => <AgentChip key={a} name={a} />)}
+          {m.intent && <span className="rounded-full bg-indigo-50 px-2 py-0.5 font-mono text-[10.5px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/30">Intent: {m.intent}</span>}
+          {m.action_selected && m.action_selected !== "none" && <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-mono text-[10.5px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">Action: {m.action_selected}</span>}
           {m.question_type && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">{m.question_type}</span>}
           {m.engine && !m.seeded && m.engine !== "offline" && <span className="rounded-full bg-brand-50 px-2 py-0.5 font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">{m.engine === "openai" ? "LLM" : "Offline engine (fallback)"}</span>}
           {m.duration_ms !== undefined && <span className="text-slate-400">{(m.duration_ms / 1000).toFixed(2)}s</span>}

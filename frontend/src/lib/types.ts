@@ -98,6 +98,9 @@ export interface SecurityEvent {
 
 export interface MessageMeta {
   intent?: string;
+  action_selected?: string;
+  intent_status?: string;
+  intent_data?: any;
   question_type?: string;
   agents?: string[];
   records?: RecordRef[];

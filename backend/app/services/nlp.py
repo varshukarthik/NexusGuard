@@ -99,10 +99,12 @@ def parse_leave_request(text: str, base: date | None = None) -> LeaveRequestDeta
     t = text.strip()
     low = t.lower()
 
+    # Primary intent check
     is_leave = bool(re.search(
         r"\b(submit|apply|create|file|request|book|take|taking|need|want|give me|asking for|can i take|plan to take)\b.{0,40}\b(leave|days? off|pto|vacation|time off)\b"
         r"|\b(leave|pto|day off)\s+(tomorrow|today|next|this|on|from|for)\b"
-        r"|\bleave request\b|\bneed\s+(some\s+)?leave\b",
+        r"|\bleave request\b|\bneed\s+(some\s+)?leave\b|\bwant\s+(some\s+)?leave\b"
+        r"|\b(won'?t be available|not available|unavailable|out of office|ooo)\b",
         low
     ))
     if not is_leave:
